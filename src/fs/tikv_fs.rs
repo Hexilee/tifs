@@ -1,6 +1,6 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -45,8 +45,24 @@ impl AsyncFileSystem for TiFs {
         let mut txn = self.client.begin().await?;
         let mut start_inode = ROOT_INODE;
         let mut max_key: Option<Key> = None;
-        txn.scan_keys(ScopedKey::root().scoped().., Self::SCAN_LIMIT)
-            .await?;
+        loop {
+            let keys: Vec<Key> = txn
+                .scan_keys(ScopedKey::inode(start_inode).scoped().., Self::SCAN_LIMIT)
+                .await?
+                .collect();
+            if keys.is_empty() {
+                break;
+            }
+            max_key = Some(keys[keys.len() - 1].clone());
+            start_inode += Self::SCAN_LIMIT as u64
+        }
+
+        match max_key {
+            Some(key) => self
+                .inode_next
+                .store(ScopedKey::from(key).key() + 1, Ordering::Relaxed),
+            _ => unimplemented!(),
+        }
 
         Ok(txn.rollback().await?)
     }
