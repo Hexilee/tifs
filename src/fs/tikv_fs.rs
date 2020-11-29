@@ -9,7 +9,8 @@ use tikv_client::{Config, Key, TransactionClient};
 use time::Timespec;
 
 use super::async_fs::AsyncFileSystem;
-use super::error::Result;
+use super::error::{FsError, Result};
+use super::inode::Inode;
 use super::key::{ScopedKey, ROOT_INODE};
 use super::reply::*;
 
@@ -57,19 +58,15 @@ impl AsyncFileSystem for TiFs {
             start_inode += Self::SCAN_LIMIT as u64
         }
 
-        match max_key {
-            Some(key) => self
-                .inode_next
-                .store(ScopedKey::from(key).key() + 1, Ordering::Relaxed),
-            _ => unimplemented!(),
+        if let Some(key) = max_key {
+            self.inode_next
+                .store(ScopedKey::from(key).key() + 1, Ordering::Relaxed)
         }
 
         Ok(txn.rollback().await?)
     }
 
-    async fn destroy(&self) {
-        unimplemented!()
-    }
+    async fn destroy(&self) {}
 
     async fn lookup(&self, parent: u64, name: OsString) -> Result<Entry> {
         unimplemented!()
@@ -80,7 +77,13 @@ impl AsyncFileSystem for TiFs {
     }
 
     async fn getattr(&self, ino: u64) -> Result<Attr> {
-        unimplemented!()
+        let mut txn = self.client.begin().await?;
+        let value = txn
+            .get(ScopedKey::inode(ino).scoped())
+            .await?
+            .ok_or_else(|| FsError::InodeNotFound { inode: ino })?;
+        txn.rollback().await?;
+        Ok(Attr::new(Inode::from(value).0))
     }
 
     async fn setattr(

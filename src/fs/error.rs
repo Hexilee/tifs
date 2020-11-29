@@ -33,49 +33,49 @@ pub enum FsError {
 pub type Result<T> = std::result::Result<T, FsError>;
 
 impl FsError {
-    pub fn last() -> FsError {
-        FsError::from(nix::Error::last())
+    pub fn last() -> Self {
+        nix::Error::last().into()
     }
 }
 
 impl From<nix::Error> for FsError {
-    fn from(err: Error) -> FsError {
+    fn from(err: Error) -> Self {
         // TODO: match more error types
         match err {
-            Error::Sys(errno) => FsError::Sys(errno),
+            Error::Sys(errno) => Self::Sys(errno),
             _ => {
                 error!("unknown error {:?}", err);
-                FsError::UnknownError
+                Self::UnknownError
             }
         }
     }
 }
 
 impl From<std::ffi::NulError> for FsError {
-    fn from(_: std::ffi::NulError) -> FsError {
-        FsError::InvalidStr
+    fn from(_: std::ffi::NulError) -> Self {
+        Self::InvalidStr
     }
 }
 
 impl From<std::io::Error> for FsError {
-    fn from(err: std::io::Error) -> FsError {
+    fn from(err: std::io::Error) -> Self {
         error!("unknown error {:?}", err);
-        FsError::UnknownError
+        Self::UnknownError
     }
 }
 
 impl From<tikv_client::Error> for FsError {
-    fn from(err: tikv_client::Error) -> FsError {
+    fn from(err: tikv_client::Error) -> Self {
         use tikv_client::ErrorKind;
 
         if let ErrorKind::RegionForKeyNotFound { key: key_data } = err.kind() {
             let key: Key = key_data.clone().into();
             let scoped_key: ScopedKey = key.into();
-            FsError::InodeNotFound {
+            Self::InodeNotFound {
                 inode: scoped_key.key(),
             }
         } else {
-            FsError::UnknownError
+            Self::UnknownError
         }
     }
 }
