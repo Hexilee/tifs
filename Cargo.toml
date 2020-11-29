@@ -1,0 +1,23 @@
+[package]
+name = "tifs"
+version = "0.1.0"
+authors = ["hexilee <i@hexilee.me>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-std = "1.7.0"
+nix = "0.18"
+anyhow = "1.0"
+fuse = "0.3"
+libc = "0.2"
+time = "0.1"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.2"
+async-trait = "0.1"
+tikv-client = { git = "https://github.com/tikv/client-rust.git" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
