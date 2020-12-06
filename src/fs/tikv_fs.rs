@@ -4,9 +4,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::anyhow;
 use async_trait::async_trait;
-use fuse::*;
+use fuser::*;
 use tikv_client::{Config, Key, TransactionClient};
-use time::Timespec;
 
 use super::async_fs::AsyncFileSystem;
 use super::error::{FsError, Result};

@@ -1,6 +1,7 @@
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::fmt::Debug;
 use std::sync::Arc;
+use std::time::SystemTime;
 use std::{
     future::Future,
     path::{Path, PathBuf},
@@ -8,11 +9,10 @@ use std::{
 
 use async_std::task::{block_on, spawn};
 use async_trait::async_trait;
-use fuse::*;
-use time::Timespec;
+use fuser::*;
 use tracing::trace;
 
-use super::error::Result;
+use super::error::{FsError, Result};
 use super::reply::*;
 
 pub fn spawn_reply<F, R, V>(id: u64, reply: R, f: F)
@@ -30,141 +30,507 @@ where
 
 #[async_trait]
 pub trait AsyncFileSystem: Send + Sync {
-    async fn init(&self) -> Result<()>;
+    /// Initialize filesystem.
+    /// Called before any other filesystem method.
+    /// The kernel module connection can be configured using the KernelConfig object
+    async fn init(&mut self, _config: &mut KernelConfig) -> Result<()> {
+        Ok(())
+    }
 
-    async fn destroy(&self);
+    /// Clean up filesystem.
+    /// Called on filesystem exit.
+    async fn destroy(&mut self) {}
 
-    async fn lookup(&self, parent: u64, name: OsString) -> Result<Entry>;
+    /// Look up a directory entry by name and get its attributes.
+    async fn lookup(&mut self, _parent: u64, _name: OsString) -> Result<Entry> {
+        Err(FsError::unimplemented())
+    }
 
-    async fn forget(&self, ino: u64, nlookup: u64);
+    /// Forget about an inode.
+    /// The nlookup parameter indicates the number of lookups previously performed on
+    /// this inode. If the filesystem implements inode lifetimes, it is recommended that
+    /// inodes acquire a single reference on each lookup, and lose nlookup references on
+    /// each forget. The filesystem may ignore forget calls, if the inodes don't need to
+    /// have a limited lifetime. On unmount it is not guaranteed, that all referenced
+    /// inodes will receive a forget message.
+    async fn forget(&mut self, _ino: u64, _nlookup: u64) {}
 
-    async fn getattr(&self, ino: u64) -> Result<Attr>;
+    /// Get file attributes.
+    async fn getattr(&mut self, _ino: u64) -> Result<Attr> {
+        Err(FsError::unimplemented())
+    }
 
+    /// Set file attributes.
     async fn setattr(
-        &self,
-        ino: u64,
-        mode: Option<u32>,
-        uid: Option<u32>,
-        gid: Option<u32>,
-        size: Option<u64>,
-        atime: Option<Timespec>,
-        mtime: Option<Timespec>,
-        fh: Option<u64>,
-        crtime: Option<Timespec>,
-        chgtime: Option<Timespec>,
-        bkuptime: Option<Timespec>,
-        flags: Option<u32>,
-    ) -> Result<Attr>;
+        &mut self,
+        _ino: u64,
+        _mode: Option<u32>,
+        _uid: Option<u32>,
+        _gid: Option<u32>,
+        _size: Option<u64>,
+        _atime: Option<TimeOrNow>,
+        _mtime: Option<TimeOrNow>,
+        _ctime: Option<SystemTime>,
+        _fh: Option<u64>,
+        _crtime: Option<SystemTime>,
+        _chgtime: Option<SystemTime>,
+        _bkuptime: Option<SystemTime>,
+        _flags: Option<u32>,
+    ) -> Result<Attr> {
+        Err(FsError::unimplemented())
+    }
 
-    async fn readlink(&self, ino: u64) -> Result<Data>;
+    /// Read symbolic link.
+    async fn readlink(&mut self, _ino: u64) -> Result<Data> {
+        Err(FsError::unimplemented())
+    }
 
-    async fn mknod(&self, parent: u64, name: OsString, mode: u32, rdev: u32) -> Result<Entry>;
+    /// Create file node.
+    /// Create a regular file, character device, block device, fifo or socket node.
+    async fn mknod(
+        &mut self,
+        _parent: u64,
+        _name: OsString,
+        _mode: u32,
+        _umask: u32,
+        _rdev: u32,
+    ) -> Result<Entry> {
+        Err(FsError::unimplemented())
+    }
 
-    async fn mkdir(&self, parent: u64, name: OsString, mode: u32) -> Result<Entry>;
+    /// Create a directory.
+    async fn mkdir(
+        &mut self,
+        _parent: u64,
+        _name: OsString,
+        _mode: u32,
+        _umask: u32,
+    ) -> Result<Entry> {
+        Err(FsError::unimplemented())
+    }
 
-    async fn unlink(&self, parent: u64, name: OsString) -> Result<()>;
+    /// Remove a file.
+    async fn unlink(&mut self, _parent: u64, _name: OsString) -> Result<()> {
+        Err(FsError::unimplemented())
+    }
 
-    async fn rmdir(&self, parent: u64, name: OsString) -> Result<()>;
+    /// Remove a directory.
+    async fn rmdir(&mut self, _parent: u64, _name: OsString) -> Result<()> {
+        Err(FsError::unimplemented())
+    }
 
-    async fn symlink(&self, parent: u64, name: OsString, link: PathBuf) -> Result<Entry>;
+    /// Create a symbolic link.
+    async fn symlink(&mut self, _parent: u64, _name: OsString, _link: PathBuf) -> Result<Entry> {
+        Err(FsError::unimplemented())
+    }
 
+    /// Rename a file.
     async fn rename(
-        &self,
-        parent: u64,
-        name: OsString,
-        newparent: u64,
-        newname: OsString,
-    ) -> Result<()>;
+        &mut self,
+        _parent: u64,
+        _name: OsString,
+        _newparent: u64,
+        _newname: OsString,
+        _flags: u32,
+    ) -> Result<()> {
+        Err(FsError::unimplemented())
+    }
 
-    async fn link(&self, ino: u64, newparent: u64, newname: OsString) -> Result<Entry>;
+    /// Create a hard link.
+    async fn link(&mut self, _ino: u64, _newparent: u64, _newname: OsString) -> Result<Entry> {
+        Err(FsError::unimplemented())
+    }
 
-    async fn open(&self, ino: u64, flags: u32) -> Result<Open>;
+    /// Open a file.
+    /// Open flags (with the exception of O_CREAT, O_EXCL, O_NOCTTY and O_TRUNC) are
+    /// available in flags. Filesystem may store an arbitrary file handle (pointer, index,
+    /// etc) in fh, and use this in other all other file operations (read, write, flush,
+    /// release, fsync). Filesystem may also implement stateless file I/O and not store
+    /// anything in fh. There are also some flags (direct_io, keep_cache) which the
+    /// filesystem may set, to change the way the file is opened. See fuse_file_info
+    /// structure in <fuse_common.h> for more details.
+    async fn open(&mut self, _ino: u64, _flags: i32) -> Result<Open> {
+        Ok(Open::new(0, 0))
+    }
 
-    async fn read(&self, ino: u64, fh: u64, offset: i64, size: u32) -> Result<Data>;
+    /// Read data.
+    /// Read should send exactly the number of bytes requested except on EOF or error,
+    /// otherwise the rest of the data will be substituted with zeroes. An exception to
+    /// this is when the file has been opened in 'direct_io' mode, in which case the
+    /// return value of the read system call will reflect the return value of this
+    /// operation. fh will contain the value set by the open method, or will be undefined
+    /// if the open method didn't set any value.
+    ///
+    /// flags: these are the file flags, such as O_SYNC. Only supported with ABI >= 7.9
+    /// lock_owner: only supported with ABI >= 7.9
+    async fn read(
+        &mut self,
+        _ino: u64,
+        _fh: u64,
+        _offset: i64,
+        _size: u32,
+        _flags: i32,
+        _lock_owner: Option<u64>,
+    ) -> Result<Data> {
+        Err(FsError::unimplemented())
+    }
 
+    /// Write data.
+    /// Write should return exactly the number of bytes requested except on error. An
+    /// exception to this is when the file has been opened in 'direct_io' mode, in
+    /// which case the return value of the write system call will reflect the return
+    /// value of this operation. fh will contain the value set by the open method, or
+    /// will be undefined if the open method didn't set any value.
+    ///
+    /// write_flags: will contain FUSE_WRITE_CACHE, if this write is from the page cache. If set,
+    /// the pid, uid, gid, and fh may not match the value that would have been sent if write cachin
+    /// is disabled
+    /// flags: these are the file flags, such as O_SYNC. Only supported with ABI >= 7.9
+    /// lock_owner: only supported with ABI >= 7.9
     async fn write(
-        &self,
-        ino: u64,
-        fh: u64,
-        offset: i64,
-        data: Vec<u8>,
-        flags: u32,
-    ) -> Result<Write>;
+        &mut self,
+        _ino: u64,
+        _fh: u64,
+        _offset: i64,
+        _data: Vec<u8>,
+        _write_flags: u32,
+        _flags: i32,
+        _lock_owner: Option<u64>,
+    ) -> Result<Write> {
+        Err(FsError::unimplemented())
+    }
 
-    async fn flush(&self, ino: u64, fh: u64, lock_owner: u64) -> Result<()>;
+    /// Flush method.
+    /// This is called on each close() of the opened file. Since file descriptors can
+    /// be duplicated (dup, dup2, fork), for one open call there may be many flush
+    /// calls. Filesystems shouldn't assume that flush will always be called after some
+    /// writes, or that if will be called at all. fh will contain the value set by the
+    /// open method, or will be undefined if the open method didn't set any value.
+    /// NOTE: the name of the method is misleading, since (unlike fsync) the filesystem
+    /// is not forced to flush pending writes. One reason to flush data, is if the
+    /// filesystem wants to return write errors. If the filesystem supports file locking
+    /// operations (setlk, getlk) it should remove all locks belonging to 'lock_owner'.
+    async fn flush(&mut self, _ino: u64, _fh: u64, _lock_owner: u64) -> Result<()> {
+        Err(FsError::unimplemented())
+    }
 
+    /// Release an open file.
+    /// Release is called when there are no more references to an open file: all file
+    /// descriptors are closed and all memory mappings are unmapped. For every open
+    /// call there will be exactly one release call. The filesystem may reply with an
+    /// error, but error values are not returned to close() or munmap() which triggered
+    /// the release. fh will contain the value set by the open method, or will be undefined
+    /// if the open method didn't set any value. flags will contain the same flags as for
+    /// open.
     async fn release(
-        &self,
-        ino: u64,
-        fh: u64,
-        flags: u32,
-        lock_owner: u64,
-        flush: bool,
-    ) -> Result<()>;
+        &mut self,
+        _ino: u64,
+        _fh: u64,
+        _flags: i32,
+        _lock_owner: Option<u64>,
+        _flush: bool,
+    ) -> Result<()> {
+        Ok(())
+    }
 
-    async fn fsync(&self, ino: u64, fh: u64, datasync: bool) -> Result<()>;
+    /// Synchronize file contents.
+    /// If the datasync parameter is non-zero, then only the user data should be flushed,
+    /// not the meta data.
+    async fn fsync(&mut self, _ino: u64, _fh: u64, _datasync: bool) -> Result<()> {
+        Err(FsError::unimplemented())
+    }
 
-    async fn opendir(&self, ino: u64, flags: u32) -> Result<Open>;
+    /// Open a directory.
+    /// Filesystem may store an arbitrary file handle (pointer, index, etc) in fh, and
+    /// use this in other all other directory stream operations (readdir, releasedir,
+    /// fsyncdir). Filesystem may also implement stateless directory I/O and not store
+    /// anything in fh, though that makes it impossible to implement standard conforming
+    /// directory stream operations in case the contents of the directory can change
+    /// between opendir and releasedir.
+    fn opendir(&mut self, _req: &Request<'_>, _ino: u64, _flags: i32, reply: ReplyOpen) {
+        reply.opened(0, 0);
+    }
 
-    async fn readdir(&self, ino: u64, fh: u64, offset: i64, reply: ReplyDirectory);
+    /// Read directory.
+    /// Send a buffer filled using buffer.fill(), with size not exceeding the
+    /// requested size. Send an empty buffer on end of stream. fh will contain the
+    /// value set by the opendir method, or will be undefined if the opendir method
+    /// didn't set any value.
+    fn readdir(
+        &mut self,
+        _req: &Request<'_>,
+        _ino: u64,
+        _fh: u64,
+        _offset: i64,
+        reply: ReplyDirectory,
+    ) {
+        reply.error(ENOSYS);
+    }
 
-    async fn releasedir(&self, ino: u64, fh: u64, flags: u32) -> Result<()>;
+    /// Read directory.
+    /// Send a buffer filled using buffer.fill(), with size not exceeding the
+    /// requested size. Send an empty buffer on end of stream. fh will contain the
+    /// value set by the opendir method, or will be undefined if the opendir method
+    /// didn't set any value.
+    fn readdirplus(
+        &mut self,
+        _req: &Request<'_>,
+        _ino: u64,
+        _fh: u64,
+        _offset: i64,
+        reply: ReplyDirectoryPlus,
+    ) {
+        reply.error(ENOSYS);
+    }
 
-    async fn fsyncdir(&self, ino: u64, fh: u64, datasync: bool) -> Result<()>;
+    /// Release an open directory.
+    /// For every opendir call there will be exactly one releasedir call. fh will
+    /// contain the value set by the opendir method, or will be undefined if the
+    /// opendir method didn't set any value.
+    fn releasedir(
+        &mut self,
+        _req: &Request<'_>,
+        _ino: u64,
+        _fh: u64,
+        _flags: i32,
+        reply: ReplyEmpty,
+    ) {
+        reply.ok();
+    }
 
-    async fn statfs(&self, ino: u64) -> Result<StatFs>;
+    /// Synchronize directory contents.
+    /// If the datasync parameter is set, then only the directory contents should
+    /// be flushed, not the meta data. fh will contain the value set by the opendir
+    /// method, or will be undefined if the opendir method didn't set any value.
+    fn fsyncdir(
+        &mut self,
+        _req: &Request<'_>,
+        _ino: u64,
+        _fh: u64,
+        _datasync: bool,
+        reply: ReplyEmpty,
+    ) {
+        reply.error(ENOSYS);
+    }
 
-    async fn setxattr(
-        &self,
-        ino: u64,
-        name: OsString,
-        value: Vec<u8>,
-        flags: u32,
-        position: u32,
-    ) -> Result<()>;
+    /// Get file system statistics.
+    fn statfs(&mut self, _req: &Request<'_>, _ino: u64, reply: ReplyStatfs) {
+        reply.statfs(0, 0, 0, 0, 0, 512, 255, 0);
+    }
 
-    async fn getxattr(&self, ino: u64, name: OsString, size: u32) -> Result<Xattr>;
+    /// Set an extended attribute.
+    fn setxattr(
+        &mut self,
+        _req: &Request<'_>,
+        _ino: u64,
+        _name: &OsStr,
+        _value: &[u8],
+        _flags: i32,
+        _position: u32,
+        reply: ReplyEmpty,
+    ) {
+        reply.error(ENOSYS);
+    }
 
-    async fn listxattr(&self, ino: u64, size: u32) -> Result<Xattr>;
+    /// Get an extended attribute.
+    /// If `size` is 0, the size of the value should be sent with `reply.size()`.
+    /// If `size` is not 0, and the value fits, send it with `reply.data()`, or
+    /// `reply.error(ERANGE)` if it doesn't.
+    fn getxattr(
+        &mut self,
+        _req: &Request<'_>,
+        _ino: u64,
+        _name: &OsStr,
+        _size: u32,
+        reply: ReplyXattr,
+    ) {
+        reply.error(ENOSYS);
+    }
 
-    async fn removexattr(&self, ino: u64, name: OsString) -> Result<()>;
+    /// List extended attribute names.
+    /// If `size` is 0, the size of the value should be sent with `reply.size()`.
+    /// If `size` is not 0, and the value fits, send it with `reply.data()`, or
+    /// `reply.error(ERANGE)` if it doesn't.
+    fn listxattr(&mut self, _req: &Request<'_>, _ino: u64, _size: u32, reply: ReplyXattr) {
+        reply.error(ENOSYS);
+    }
 
-    async fn access(&self, ino: u64, mask: u32) -> Result<()>;
+    /// Remove an extended attribute.
+    fn removexattr(&mut self, _req: &Request<'_>, _ino: u64, _name: &OsStr, reply: ReplyEmpty) {
+        reply.error(ENOSYS);
+    }
 
-    async fn create(
-        &self,
-        parent: u64,
-        name: OsString,
-        mode: u32,
-        flags: u32,
-        uid: u32,
-        gid: u32,
-    ) -> Result<Create>;
+    /// Check file access permissions.
+    /// This will be called for the access() system call. If the 'default_permissions'
+    /// mount option is given, this method is not called. This method is not called
+    /// under Linux kernel versions 2.4.x
+    fn access(&mut self, _req: &Request<'_>, _ino: u64, _mask: i32, reply: ReplyEmpty) {
+        reply.error(ENOSYS);
+    }
 
-    async fn getlk(
-        &self,
-        ino: u64,
-        fh: u64,
-        lock_owner: u64,
-        start: u64,
-        end: u64,
-        typ: u32,
-        pid: u32,
-    ) -> Result<Lock>;
+    /// Create and open a file.
+    /// If the file does not exist, first create it with the specified mode, and then
+    /// open it. Open flags (with the exception of O_NOCTTY) are available in flags.
+    /// Filesystem may store an arbitrary file handle (pointer, index, etc) in fh,
+    /// and use this in other all other file operations (read, write, flush, release,
+    /// fsync). There are also some flags (direct_io, keep_cache) which the
+    /// filesystem may set, to change the way the file is opened. See fuse_file_info
+    /// structure in <fuse_common.h> for more details. If this method is not
+    /// implemented or under Linux kernel versions earlier than 2.6.15, the mknod()
+    /// and open() methods will be called instead.
+    fn create(
+        &mut self,
+        _req: &Request<'_>,
+        _parent: u64,
+        _name: &OsStr,
+        _mode: u32,
+        _umask: u32,
+        _flags: i32,
+        reply: ReplyCreate,
+    ) {
+        reply.error(ENOSYS);
+    }
 
-    async fn setlk(
-        &self,
-        ino: u64,
-        fh: u64,
-        lock_owner: u64,
-        start: u64,
-        end: u64,
-        typ: u32,
-        pid: u32,
-        sleep: bool,
-    ) -> Result<()>;
+    /// Test for a POSIX file lock.
+    fn getlk(
+        &mut self,
+        _req: &Request<'_>,
+        _ino: u64,
+        _fh: u64,
+        _lock_owner: u64,
+        _start: u64,
+        _end: u64,
+        _typ: i32,
+        _pid: u32,
+        reply: ReplyLock,
+    ) {
+        reply.error(ENOSYS);
+    }
 
-    async fn bmap(&self, ino: u64, blocksize: u32, idx: u64, reply: ReplyBmap);
+    /// Acquire, modify or release a POSIX file lock.
+    /// For POSIX threads (NPTL) there's a 1-1 relation between pid and owner, but
+    /// otherwise this is not always the case.  For checking lock ownership,
+    /// 'fi->owner' must be used. The l_pid field in 'struct flock' should only be
+    /// used to fill in this field in getlk(). Note: if the locking methods are not
+    /// implemented, the kernel will still allow file locking to work locally.
+    /// Hence these are only interesting for network filesystems and similar.
+    fn setlk(
+        &mut self,
+        _req: &Request<'_>,
+        _ino: u64,
+        _fh: u64,
+        _lock_owner: u64,
+        _start: u64,
+        _end: u64,
+        _typ: i32,
+        _pid: u32,
+        _sleep: bool,
+        reply: ReplyEmpty,
+    ) {
+        reply.error(ENOSYS);
+    }
+
+    /// Map block index within file to block index within device.
+    /// Note: This makes sense only for block device backed filesystems mounted
+    /// with the 'blkdev' option
+    fn bmap(
+        &mut self,
+        _req: &Request<'_>,
+        _ino: u64,
+        _blocksize: u32,
+        _idx: u64,
+        reply: ReplyBmap,
+    ) {
+        reply.error(ENOSYS);
+    }
+
+    /// control device
+    fn ioctl(
+        &mut self,
+        _req: &Request<'_>,
+        _ino: u64,
+        _fh: u64,
+        _flags: u32,
+        _cmd: u32,
+        _in_data: &[u8],
+        _out_size: u32,
+        reply: ReplyIoctl,
+    ) {
+        reply.error(ENOSYS);
+    }
+
+    /// Preallocate or deallocate space to a file
+    fn fallocate(
+        &mut self,
+        _req: &Request<'_>,
+        _ino: u64,
+        _fh: u64,
+        _offset: i64,
+        _length: i64,
+        _mode: i32,
+        reply: ReplyEmpty,
+    ) {
+        reply.error(ENOSYS);
+    }
+
+    /// Reposition read/write file offset
+    fn lseek(
+        &mut self,
+        _req: &Request<'_>,
+        _ino: u64,
+        _fh: u64,
+        _offset: i64,
+        _whence: i32,
+        reply: ReplyLseek,
+    ) {
+        reply.error(ENOSYS);
+    }
+
+    /// Copy the specified range from the source inode to the destination inode
+    fn copy_file_range(
+        &mut self,
+        _req: &Request<'_>,
+        _ino_in: u64,
+        _fh_in: u64,
+        _offset_in: i64,
+        _ino_out: u64,
+        _fh_out: u64,
+        _offset_out: i64,
+        _len: u64,
+        _flags: u32,
+        reply: ReplyWrite,
+    ) {
+        reply.error(ENOSYS);
+    }
+
+    /// macOS only: Rename the volume. Set fuse_init_out.flags during init to
+    /// FUSE_VOL_RENAME to enable
+    #[cfg(target_os = "macos")]
+    fn setvolname(&mut self, _req: &Request<'_>, _name: &OsStr, reply: ReplyEmpty) {
+        reply.error(ENOSYS);
+    }
+
+    /// macOS only (undocumented)
+    #[cfg(target_os = "macos")]
+    fn exchange(
+        &mut self,
+        _req: &Request<'_>,
+        _parent: u64,
+        _name: &OsStr,
+        _newparent: u64,
+        _newname: &OsStr,
+        _options: u64,
+        reply: ReplyEmpty,
+    ) {
+        reply.error(ENOSYS);
+    }
+
+    /// macOS only: Query extended times (bkuptime and crtime). Set fuse_init_out.flags
+    /// during init to FUSE_XTIMES to enable
+    #[cfg(target_os = "macos")]
+    fn getxtimes(&mut self, _req: &Request<'_>, _ino: u64, reply: ReplyXTimes) {
+        reply.error(ENOSYS);
+    }
 }
 
 pub struct AsyncFs<T>(Arc<T>);

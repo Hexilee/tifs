@@ -11,6 +11,9 @@ pub enum FsError {
     #[error("errno {0}")]
     Sys(Errno),
 
+    #[error("unimplemented")]
+    Unimplemented,
+
     #[error("cannot find inode({inode})")]
     InodeNotFound { inode: u64 },
 
@@ -35,6 +38,10 @@ pub type Result<T> = std::result::Result<T, FsError>;
 impl FsError {
     pub fn last() -> Self {
         nix::Error::last().into()
+    }
+
+    pub fn unimplemented() -> Self {
+        Self::Unimplemented
     }
 }
 
@@ -86,6 +93,7 @@ impl Into<libc::c_int> for FsError {
 
         match self {
             Sys(errno) => errno as i32,
+            Unimplemented => libc::ENOSYS,
             InodeNotFound { inode: _ } => libc::EFAULT,
             FhNotFound { fh: _ } => libc::EFAULT,
             UnknownFileType => libc::EINVAL,

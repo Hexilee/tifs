@@ -1,10 +1,10 @@
-use fuse::*;
-use time::{get_time, Timespec};
+use std::fmt::Debug;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use fuser::*;
 use tracing::{debug, error, trace};
 
 use super::error::Result;
-
-use std::fmt::Debug;
 
 #[derive(Debug)]
 pub enum Reply<'a> {
@@ -19,12 +19,17 @@ pub enum Reply<'a> {
     Xattr(&'a mut Xattr),
 }
 
+fn get_time() -> Duration {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap()
+}
+
 #[derive(Debug)]
 pub struct Entry {
-    pub time: Timespec,
+    pub time: Duration,
     pub stat: FileAttr,
     pub generation: u64,
 }
+
 impl Entry {
     pub fn new(stat: FileAttr, generation: u64) -> Self {
         Self {
@@ -48,7 +53,7 @@ impl Open {
 
 #[derive(Debug)]
 pub struct Attr {
-    pub time: Timespec,
+    pub time: Duration,
     pub attr: FileAttr,
 }
 impl Attr {
@@ -117,7 +122,7 @@ impl Write {
 
 #[derive(Debug)]
 pub struct Create {
-    pub ttl: Timespec,
+    pub ttl: Duration,
     pub attr: FileAttr,
     pub generation: u64,
     pub fh: u64,
@@ -139,12 +144,12 @@ impl Create {
 pub struct Lock {
     pub start: u64,
     pub end: u64,
-    pub typ: u32,
+    pub typ: i32,
     pub pid: u32,
 }
 
 impl Lock {
-    pub fn _new(start: u64, end: u64, typ: u32, pid: u32) -> Self {
+    pub fn _new(start: u64, end: u64, typ: i32, pid: u32) -> Self {
         Self {
             start,
             end,
