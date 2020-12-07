@@ -33,16 +33,16 @@ pub trait AsyncFileSystem: Send + Sync {
     /// Initialize filesystem.
     /// Called before any other filesystem method.
     /// The kernel module connection can be configured using the KernelConfig object
-    async fn init(&mut self) -> Result<()> {
+    async fn init(&self) -> Result<()> {
         Ok(())
     }
 
     /// Clean up filesystem.
     /// Called on filesystem exit.
-    async fn destroy(&mut self) {}
+    async fn destroy(&self) {}
 
     /// Look up a directory entry by name and get its attributes.
-    async fn lookup(&mut self, _parent: u64, _name: OsString) -> Result<Entry> {
+    async fn lookup(&self, _parent: u64, _name: OsString) -> Result<Entry> {
         Err(FsError::unimplemented())
     }
 
@@ -53,16 +53,16 @@ pub trait AsyncFileSystem: Send + Sync {
     /// each forget. The filesystem may ignore forget calls, if the inodes don't need to
     /// have a limited lifetime. On unmount it is not guaranteed, that all referenced
     /// inodes will receive a forget message.
-    async fn forget(&mut self, _ino: u64, _nlookup: u64) {}
+    async fn forget(&self, _ino: u64, _nlookup: u64) {}
 
     /// Get file attributes.
-    async fn getattr(&mut self, _ino: u64) -> Result<Attr> {
+    async fn getattr(&self, _ino: u64) -> Result<Attr> {
         Err(FsError::unimplemented())
     }
 
     /// Set file attributes.
     async fn setattr(
-        &mut self,
+        &self,
         _ino: u64,
         _mode: Option<u32>,
         _uid: Option<u32>,
@@ -81,14 +81,14 @@ pub trait AsyncFileSystem: Send + Sync {
     }
 
     /// Read symbolic link.
-    async fn readlink(&mut self, _ino: u64) -> Result<Data> {
+    async fn readlink(&self, _ino: u64) -> Result<Data> {
         Err(FsError::unimplemented())
     }
 
     /// Create file node.
     /// Create a regular file, character device, block device, fifo or socket node.
     async fn mknod(
-        &mut self,
+        &self,
         _parent: u64,
         _name: OsString,
         _mode: u32,
@@ -99,34 +99,28 @@ pub trait AsyncFileSystem: Send + Sync {
     }
 
     /// Create a directory.
-    async fn mkdir(
-        &mut self,
-        _parent: u64,
-        _name: OsString,
-        _mode: u32,
-        _umask: u32,
-    ) -> Result<Entry> {
+    async fn mkdir(&self, _parent: u64, _name: OsString, _mode: u32, _umask: u32) -> Result<Entry> {
         Err(FsError::unimplemented())
     }
 
     /// Remove a file.
-    async fn unlink(&mut self, _parent: u64, _name: OsString) -> Result<()> {
+    async fn unlink(&self, _parent: u64, _name: OsString) -> Result<()> {
         Err(FsError::unimplemented())
     }
 
     /// Remove a directory.
-    async fn rmdir(&mut self, _parent: u64, _name: OsString) -> Result<()> {
+    async fn rmdir(&self, _parent: u64, _name: OsString) -> Result<()> {
         Err(FsError::unimplemented())
     }
 
     /// Create a symbolic link.
-    async fn symlink(&mut self, _parent: u64, _name: OsString, _link: PathBuf) -> Result<Entry> {
+    async fn symlink(&self, _parent: u64, _name: OsString, _link: PathBuf) -> Result<Entry> {
         Err(FsError::unimplemented())
     }
 
     /// Rename a file.
     async fn rename(
-        &mut self,
+        &self,
         _parent: u64,
         _name: OsString,
         _newparent: u64,
@@ -137,7 +131,7 @@ pub trait AsyncFileSystem: Send + Sync {
     }
 
     /// Create a hard link.
-    async fn link(&mut self, _ino: u64, _newparent: u64, _newname: OsString) -> Result<Entry> {
+    async fn link(&self, _ino: u64, _newparent: u64, _newname: OsString) -> Result<Entry> {
         Err(FsError::unimplemented())
     }
 
@@ -149,7 +143,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// anything in fh. There are also some flags (direct_io, keep_cache) which the
     /// filesystem may set, to change the way the file is opened. See fuse_file_info
     /// structure in <fuse_common.h> for more details.
-    async fn open(&mut self, _ino: u64, _flags: i32) -> Result<Open> {
+    async fn open(&self, _ino: u64, _flags: i32) -> Result<Open> {
         Ok(Open::new(0, 0))
     }
 
@@ -164,7 +158,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// flags: these are the file flags, such as O_SYNC. Only supported with ABI >= 7.9
     /// lock_owner: only supported with ABI >= 7.9
     async fn read(
-        &mut self,
+        &self,
         _ino: u64,
         _fh: u64,
         _offset: i64,
@@ -188,7 +182,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// flags: these are the file flags, such as O_SYNC. Only supported with ABI >= 7.9
     /// lock_owner: only supported with ABI >= 7.9
     async fn write(
-        &mut self,
+        &self,
         _ino: u64,
         _fh: u64,
         _offset: i64,
@@ -210,7 +204,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// is not forced to flush pending writes. One reason to flush data, is if the
     /// filesystem wants to return write errors. If the filesystem supports file locking
     /// operations (setlk, getlk) it should remove all locks belonging to 'lock_owner'.
-    async fn flush(&mut self, _ino: u64, _fh: u64, _lock_owner: u64) -> Result<()> {
+    async fn flush(&self, _ino: u64, _fh: u64, _lock_owner: u64) -> Result<()> {
         Err(FsError::unimplemented())
     }
 
@@ -223,7 +217,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// if the open method didn't set any value. flags will contain the same flags as for
     /// open.
     async fn release(
-        &mut self,
+        &self,
         _ino: u64,
         _fh: u64,
         _flags: i32,
@@ -236,7 +230,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// Synchronize file contents.
     /// If the datasync parameter is non-zero, then only the user data should be flushed,
     /// not the meta data.
-    async fn fsync(&mut self, _ino: u64, _fh: u64, _datasync: bool) -> Result<()> {
+    async fn fsync(&self, _ino: u64, _fh: u64, _datasync: bool) -> Result<()> {
         Err(FsError::unimplemented())
     }
 
@@ -247,7 +241,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// anything in fh, though that makes it impossible to implement standard conforming
     /// directory stream operations in case the contents of the directory can change
     /// between opendir and releasedir.
-    async fn opendir(&mut self, _ino: u64, _flags: i32) -> Result<Open> {
+    async fn opendir(&self, _ino: u64, _flags: i32) -> Result<Open> {
         Ok(Open::new(0, 0))
     }
 
@@ -256,7 +250,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// requested size. Send an empty buffer on end of stream. fh will contain the
     /// value set by the opendir method, or will be undefined if the opendir method
     /// didn't set any value.
-    async fn readdir(&mut self, _ino: u64, _fh: u64, offset: i64) -> Result<Dir> {
+    async fn readdir(&self, _ino: u64, _fh: u64, offset: i64) -> Result<Dir> {
         Ok(Dir::offset(offset as usize))
     }
 
@@ -265,7 +259,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// requested size. Send an empty buffer on end of stream. fh will contain the
     /// value set by the opendir method, or will be undefined if the opendir method
     /// didn't set any value.
-    async fn readdirplus(&mut self, _ino: u64, _fh: u64, offset: i64) -> Result<DirPlus> {
+    async fn readdirplus(&self, _ino: u64, _fh: u64, offset: i64) -> Result<DirPlus> {
         Ok(DirPlus::offset(offset as usize))
     }
 
@@ -273,7 +267,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// For every opendir call there will be exactly one releasedir call. fh will
     /// contain the value set by the opendir method, or will be undefined if the
     /// opendir method didn't set any value.
-    async fn releasedir(&mut self, _ino: u64, _fh: u64, _flags: i32) -> Result<()> {
+    async fn releasedir(&self, _ino: u64, _fh: u64, _flags: i32) -> Result<()> {
         Err(FsError::unimplemented())
     }
 
@@ -281,21 +275,21 @@ pub trait AsyncFileSystem: Send + Sync {
     /// If the datasync parameter is set, then only the directory contents should
     /// be flushed, not the meta data. fh will contain the value set by the opendir
     /// method, or will be undefined if the opendir method didn't set any value.
-    async fn fsyncdir(&mut self, _ino: u64, _fh: u64, _datasync: bool) -> Result<()> {
+    async fn fsyncdir(&self, _ino: u64, _fh: u64, _datasync: bool) -> Result<()> {
         Err(FsError::unimplemented())
     }
 
     /// Get file system statistics.
-    async fn statfs(&mut self, _ino: u64) -> Result<StatFs> {
+    async fn statfs(&self, _ino: u64) -> Result<StatFs> {
         Ok(StatFs::new(0, 0, 0, 0, 0, 512, 255, 0))
     }
 
     /// Set an extended attribute.
     async fn setxattr(
-        &mut self,
+        &self,
         _ino: u64,
-        _name: &OsStr,
-        _value: &[u8],
+        _name: OsString,
+        _value: Vec<u8>,
         _flags: i32,
         _position: u32,
     ) -> Result<()> {
@@ -306,7 +300,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// If `size` is 0, the size of the value should be sent with `reply.size()`.
     /// If `size` is not 0, and the value fits, send it with `reply.data()`, or
     /// `reply.error(ERANGE)` if it doesn't.
-    async fn getxattr(&mut self, _ino: u64, _name: &OsStr, _size: u32) -> Result<Xattr> {
+    async fn getxattr(&self, _ino: u64, _name: OsString, _size: u32) -> Result<Xattr> {
         Err(FsError::unimplemented())
     }
 
@@ -314,12 +308,12 @@ pub trait AsyncFileSystem: Send + Sync {
     /// If `size` is 0, the size of the value should be sent with `reply.size()`.
     /// If `size` is not 0, and the value fits, send it with `reply.data()`, or
     /// `reply.error(ERANGE)` if it doesn't.
-    async fn listxattr(&mut self, _ino: u64, _size: u32) -> Result<Xattr> {
+    async fn listxattr(&self, _ino: u64, _size: u32) -> Result<Xattr> {
         Err(FsError::unimplemented())
     }
 
     /// Remove an extended attribute.
-    async fn removexattr(&mut self, _ino: u64, _name: &OsStr) -> Result<()> {
+    async fn removexattr(&self, _ino: u64, _name: OsString) -> Result<()> {
         Err(FsError::unimplemented())
     }
 
@@ -327,7 +321,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// This will be called for the access() system call. If the 'default_permissions'
     /// mount option is given, this method is not called. This method is not called
     /// under Linux kernel versions 2.4.x
-    async fn access(&mut self, _ino: u64, _mask: i32) -> Result<()> {
+    async fn access(&self, _ino: u64, _mask: i32) -> Result<()> {
         Err(FsError::unimplemented())
     }
 
@@ -342,9 +336,11 @@ pub trait AsyncFileSystem: Send + Sync {
     /// implemented or under Linux kernel versions earlier than 2.6.15, the mknod()
     /// and open() methods will be called instead.
     async fn create(
-        &mut self,
+        &self,
+        _uid: u32,
+        _gid: u32,
         _parent: u64,
-        _name: &OsStr,
+        _name: OsString,
         _mode: u32,
         _umask: u32,
         _flags: i32,
@@ -354,7 +350,7 @@ pub trait AsyncFileSystem: Send + Sync {
 
     /// Test for a POSIX file lock.
     async fn getlk(
-        &mut self,
+        &self,
         _ino: u64,
         _fh: u64,
         _lock_owner: u64,
@@ -374,7 +370,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// implemented, the kernel will still allow file locking to work locally.
     /// Hence these are only interesting for network filesystems and similar.
     async fn setlk(
-        &mut self,
+        &self,
         _ino: u64,
         _fh: u64,
         _lock_owner: u64,
@@ -390,13 +386,13 @@ pub trait AsyncFileSystem: Send + Sync {
     /// Map block index within file to block index within device.
     /// Note: This makes sense only for block device backed filesystems mounted
     /// with the 'blkdev' option
-    async fn bmap(&mut self, _ino: u64, _blocksize: u32, _idx: u64) -> Result<Bmap> {
+    async fn bmap(&self, _ino: u64, _blocksize: u32, _idx: u64) -> Result<Bmap> {
         Err(FsError::unimplemented())
     }
 
     /// Preallocate or deallocate space to a file
     async fn fallocate(
-        &mut self,
+        &self,
         _ino: u64,
         _fh: u64,
         _offset: i64,
@@ -407,13 +403,13 @@ pub trait AsyncFileSystem: Send + Sync {
     }
 
     /// Reposition read/write file offset
-    async fn lseek(&mut self, _ino: u64, _fh: u64, _offset: i64, _whence: i32) -> Result<Lseek> {
+    async fn lseek(&self, _ino: u64, _fh: u64, _offset: i64, _whence: i32) -> Result<Lseek> {
         Err(FsError::unimplemented())
     }
 
     /// Copy the specified range from the source inode to the destination inode
     async fn copy_file_range(
-        &mut self,
+        &self,
         _ino_in: u64,
         _fh_in: u64,
         _offset_in: i64,
@@ -454,7 +450,7 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
         block_on(self.0.destroy())
     }
 
-    fn lookup(&mut self, req: &Request, parent: u64, name: &std::ffi::OsStr, reply: ReplyEntry) {
+    fn lookup(&mut self, req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
         let async_impl = self.0.clone();
         let name = name.to_owned();
         spawn_reply(req.unique(), reply, async move {
@@ -502,7 +498,8 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
         spawn_reply(req.unique(), reply, async move {
             async_impl
                 .setattr(
-                    ino, mode, uid, gid, size, atime, mtime, fh, crtime, chgtime, bkuptime, flags,
+                    ino, mode, uid, gid, size, atime, mtime, ctime, fh, crtime, chgtime, bkuptime,
+                    flags,
                 )
                 .await
         });
@@ -514,54 +511,61 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
             async_impl.readlink(ino).await
         });
     }
+
     fn mknod(
         &mut self,
         req: &Request,
         parent: u64,
-        name: &std::ffi::OsStr,
+        name: &OsStr,
         mode: u32,
+        umask: u32,
         rdev: u32,
         reply: ReplyEntry,
     ) {
         let async_impl = self.0.clone();
         let name = name.to_owned();
         spawn_reply(req.unique(), reply, async move {
-            async_impl.mknod(parent, name, mode, rdev).await
+            async_impl.mknod(parent, name, mode, umask, rdev).await
         });
     }
+
     fn mkdir(
         &mut self,
         req: &Request,
         parent: u64,
-        name: &std::ffi::OsStr,
+        name: &OsStr,
         mode: u32,
+        umask: u32,
         reply: ReplyEntry,
     ) {
         let async_impl = self.0.clone();
         let name = name.to_owned();
         spawn_reply(req.unique(), reply, async move {
-            async_impl.mkdir(parent, name, mode).await
+            async_impl.mkdir(parent, name, mode, umask).await
         });
     }
-    fn unlink(&mut self, req: &Request, parent: u64, name: &std::ffi::OsStr, reply: ReplyEmpty) {
+
+    fn unlink(&mut self, req: &Request, parent: u64, name: &OsStr, reply: ReplyEmpty) {
         let async_impl = self.0.clone();
         let name = name.to_owned();
         spawn_reply(req.unique(), reply, async move {
             async_impl.unlink(parent, name).await
         });
     }
-    fn rmdir(&mut self, req: &Request, parent: u64, name: &std::ffi::OsStr, reply: ReplyEmpty) {
+
+    fn rmdir(&mut self, req: &Request, parent: u64, name: &OsStr, reply: ReplyEmpty) {
         let async_impl = self.0.clone();
         let name = name.to_owned();
         spawn_reply(req.unique(), reply, async move {
             async_impl.rmdir(parent, name).await
         });
     }
+
     fn symlink(
         &mut self,
         req: &Request,
         parent: u64,
-        name: &std::ffi::OsStr,
+        name: &OsStr,
         link: &Path,
         reply: ReplyEntry,
     ) {
@@ -572,28 +576,33 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
             async_impl.symlink(parent, name, link).await
         });
     }
+
     fn rename(
         &mut self,
         req: &Request,
         parent: u64,
-        name: &std::ffi::OsStr,
+        name: &OsStr,
         newparent: u64,
-        newname: &std::ffi::OsStr,
+        newname: &OsStr,
+        flags: u32,
         reply: ReplyEmpty,
     ) {
         let async_impl = self.0.clone();
         let name = name.to_owned();
         let newname = newname.to_owned();
         spawn_reply(req.unique(), reply, async move {
-            async_impl.rename(parent, name, newparent, newname).await
+            async_impl
+                .rename(parent, name, newparent, newname, flags)
+                .await
         });
     }
+
     fn link(
         &mut self,
         req: &Request,
         ino: u64,
         newparent: u64,
-        newname: &std::ffi::OsStr,
+        newname: &OsStr,
         reply: ReplyEntry,
     ) {
         let async_impl = self.0.clone();
@@ -602,18 +611,33 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
             async_impl.link(ino, newparent, newname).await
         });
     }
-    fn open(&mut self, req: &Request, ino: u64, flags: u32, reply: ReplyOpen) {
+
+    fn open(&mut self, req: &Request, ino: u64, flags: i32, reply: ReplyOpen) {
         let async_impl = self.0.clone();
         spawn_reply(req.unique(), reply, async move {
             async_impl.open(ino, flags).await
         });
     }
-    fn read(&mut self, req: &Request, ino: u64, fh: u64, offset: i64, size: u32, reply: ReplyData) {
+
+    fn read(
+        &mut self,
+        req: &Request,
+        ino: u64,
+        fh: u64,
+        offset: i64,
+        size: u32,
+        flags: i32,
+        lock_owner: Option<u64>,
+        reply: ReplyData,
+    ) {
         let async_impl = self.0.clone();
         spawn_reply(req.unique(), reply, async move {
-            async_impl.read(ino, fh, offset, size).await
+            async_impl
+                .read(ino, fh, offset, size, flags, lock_owner)
+                .await
         });
     }
+
     fn write(
         &mut self,
         req: &Request,
@@ -621,28 +645,34 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
         fh: u64,
         offset: i64,
         data: &[u8],
-        flags: u32,
+        write_flags: u32,
+        flags: i32,
+        lock_owner: Option<u64>,
         reply: ReplyWrite,
     ) {
         let async_impl = self.0.clone();
         let data = data.to_owned();
         spawn_reply(req.unique(), reply, async move {
-            async_impl.write(ino, fh, offset, data, flags).await
+            async_impl
+                .write(ino, fh, offset, data, write_flags, flags, lock_owner)
+                .await
         });
     }
+
     fn flush(&mut self, req: &Request, ino: u64, fh: u64, lock_owner: u64, reply: ReplyEmpty) {
         let async_impl = self.0.clone();
         spawn_reply(req.unique(), reply, async move {
             async_impl.flush(ino, fh, lock_owner).await
         });
     }
+
     fn release(
         &mut self,
         req: &Request,
         ino: u64,
         fh: u64,
-        flags: u32,
-        lock_owner: u64,
+        flags: i32,
+        lock_owner: Option<u64>,
         flush: bool,
         reply: ReplyEmpty,
     ) {
@@ -651,36 +681,49 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
             async_impl.release(ino, fh, flags, lock_owner, flush).await
         });
     }
+
     fn fsync(&mut self, req: &Request, ino: u64, fh: u64, datasync: bool, reply: ReplyEmpty) {
         let async_impl = self.0.clone();
         spawn_reply(req.unique(), reply, async move {
             async_impl.fsync(ino, fh, datasync).await
         });
     }
-    fn opendir(&mut self, req: &Request, ino: u64, flags: u32, reply: ReplyOpen) {
+
+    fn opendir(&mut self, req: &Request, ino: u64, flags: i32, reply: ReplyOpen) {
         let async_impl = self.0.clone();
         spawn_reply(req.unique(), reply, async move {
             async_impl.opendir(ino, flags).await
         });
     }
-    fn readdir(&mut self, _req: &Request, ino: u64, fh: u64, offset: i64, reply: ReplyDirectory) {
-        let async_impl = self.0.clone();
-        spawn(async move {
-            async_impl.readdir(ino, fh, offset, reply).await;
-        });
-    }
-    fn releasedir(&mut self, req: &Request, ino: u64, fh: u64, flags: u32, reply: ReplyEmpty) {
+
+    fn readdir(&mut self, req: &Request, ino: u64, fh: u64, offset: i64, reply: ReplyDirectory) {
         let async_impl = self.0.clone();
         spawn_reply(req.unique(), reply, async move {
-            async_impl.releasedir(ino, fh, flags).await
+            async_impl.readdir(ino, fh, offset).await
         });
     }
+
+    fn readdirplus(
+        &mut self,
+        req: &Request,
+        ino: u64,
+        fh: u64,
+        offset: i64,
+        reply: ReplyDirectoryPlus,
+    ) {
+        let async_impl = self.0.clone();
+        spawn_reply(req.unique(), reply, async move {
+            async_impl.readdirplus(ino, fh, offset).await
+        });
+    }
+
     fn fsyncdir(&mut self, req: &Request, ino: u64, fh: u64, datasync: bool, reply: ReplyEmpty) {
         let async_impl = self.0.clone();
         spawn_reply(req.unique(), reply, async move {
             async_impl.fsyncdir(ino, fh, datasync).await
         });
     }
+
     fn statfs(&mut self, req: &Request, ino: u64, reply: ReplyStatfs) {
         let async_impl = self.0.clone();
         spawn_reply(
@@ -689,13 +732,14 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
             async move { async_impl.statfs(ino).await },
         );
     }
+
     fn setxattr(
         &mut self,
         req: &Request,
         ino: u64,
-        name: &std::ffi::OsStr,
+        name: &OsStr,
         value: &[u8],
-        flags: u32,
+        flags: i32,
         position: u32,
         reply: ReplyEmpty,
     ) {
@@ -706,46 +750,44 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
             async_impl.setxattr(ino, name, value, flags, position).await
         });
     }
-    fn getxattr(
-        &mut self,
-        req: &Request,
-        ino: u64,
-        name: &std::ffi::OsStr,
-        size: u32,
-        reply: ReplyXattr,
-    ) {
+
+    fn getxattr(&mut self, req: &Request, ino: u64, name: &OsStr, size: u32, reply: ReplyXattr) {
         let async_impl = self.0.clone();
         let name = name.to_owned();
         spawn_reply(req.unique(), reply, async move {
             async_impl.getxattr(ino, name, size).await
         });
     }
+
     fn listxattr(&mut self, req: &Request, ino: u64, size: u32, reply: ReplyXattr) {
         let async_impl = self.0.clone();
         spawn_reply(req.unique(), reply, async move {
             async_impl.listxattr(ino, size).await
         });
     }
-    fn removexattr(&mut self, req: &Request, ino: u64, name: &std::ffi::OsStr, reply: ReplyEmpty) {
+
+    fn removexattr(&mut self, req: &Request, ino: u64, name: &OsStr, reply: ReplyEmpty) {
         let async_impl = self.0.clone();
         let name = name.to_owned();
         spawn_reply(req.unique(), reply, async move {
             async_impl.removexattr(ino, name).await
         });
     }
-    fn access(&mut self, req: &Request, ino: u64, mask: u32, reply: ReplyEmpty) {
+    fn access(&mut self, req: &Request, ino: u64, mask: i32, reply: ReplyEmpty) {
         let async_impl = self.0.clone();
         spawn_reply(req.unique(), reply, async move {
             async_impl.access(ino, mask).await
         });
     }
+
     fn create(
         &mut self,
         req: &Request,
         parent: u64,
-        name: &std::ffi::OsStr,
+        name: &OsStr,
         mode: u32,
-        flags: u32,
+        umask: u32,
+        flags: i32,
         reply: ReplyCreate,
     ) {
         let uid = req.uid();
@@ -754,9 +796,12 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
         let async_impl = self.0.clone();
         let name = name.to_owned();
         spawn_reply(req.unique(), reply, async move {
-            async_impl.create(parent, name, mode, flags, uid, gid).await
+            async_impl
+                .create(uid, gid, parent, name, mode, umask, flags)
+                .await
         });
     }
+
     fn getlk(
         &mut self,
         req: &Request,
@@ -765,7 +810,7 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
         lock_owner: u64,
         start: u64,
         end: u64,
-        typ: u32,
+        typ: i32,
         pid: u32,
         reply: ReplyLock,
     ) {
@@ -776,6 +821,7 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
                 .await
         });
     }
+
     fn setlk(
         &mut self,
         req: &Request,
@@ -784,7 +830,7 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
         lock_owner: u64,
         start: u64,
         end: u64,
-        typ: u32,
+        typ: i32,
         pid: u32,
         sleep: bool,
         reply: ReplyEmpty,
@@ -796,10 +842,65 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
                 .await
         });
     }
-    fn bmap(&mut self, _req: &Request, ino: u64, blocksize: u32, idx: u64, reply: ReplyBmap) {
+
+    fn bmap(&mut self, req: &Request, ino: u64, blocksize: u32, idx: u64, reply: ReplyBmap) {
         let async_impl = self.0.clone();
-        spawn(async move {
-            async_impl.bmap(ino, blocksize, idx, reply).await;
+        spawn_reply(req.unique(), reply, async move {
+            async_impl.bmap(ino, blocksize, idx).await
+        });
+    }
+
+    fn fallocate(
+        &mut self,
+        req: &Request,
+        ino: u64,
+        fh: u64,
+        offset: i64,
+        length: i64,
+        mode: i32,
+        reply: ReplyEmpty,
+    ) {
+        let async_impl = self.0.clone();
+        spawn_reply(req.unique(), reply, async move {
+            async_impl.fallocate(ino, fh, offset, length, mode).await
+        });
+    }
+
+    fn lseek(
+        &mut self,
+        req: &Request,
+        ino: u64,
+        fh: u64,
+        offset: i64,
+        whence: i32,
+        reply: ReplyLseek,
+    ) {
+        let async_impl = self.0.clone();
+        spawn_reply(req.unique(), reply, async move {
+            async_impl.lseek(ino, fh, offset, whence).await
+        });
+    }
+
+    fn copy_file_range(
+        &mut self,
+        req: &Request,
+        ino_in: u64,
+        fh_in: u64,
+        offset_in: i64,
+        ino_out: u64,
+        fh_out: u64,
+        offset_out: i64,
+        len: u64,
+        flags: u32,
+        reply: ReplyWrite,
+    ) {
+        let async_impl = self.0.clone();
+        spawn_reply(req.unique(), reply, async move {
+            async_impl
+                .copy_file_range(
+                    ino_in, fh_in, offset_in, ino_out, fh_out, offset_out, len, flags,
+                )
+                .await
         });
     }
 }
