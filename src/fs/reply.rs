@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use fuser::*;
+use serde::{Deserialize, Serialize};
 use tracing::{debug, error, trace};
 
 use super::error::Result;
@@ -78,7 +79,7 @@ impl Data {
         Self { data }
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct DirItem {
     pub ino: u64,
     pub name: OsString,

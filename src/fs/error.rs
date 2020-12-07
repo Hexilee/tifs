@@ -21,6 +21,9 @@ pub enum FsError {
         msg: String,
     },
 
+    #[error("cannot find path({file})")]
+    FileNotFound { file: String },
+
     #[error("cannot find inode({inode})")]
     InodeNotFound { inode: u64 },
 
@@ -101,6 +104,7 @@ impl Into<libc::c_int> for FsError {
         match self {
             Sys(errno) => errno as i32,
             Unimplemented => libc::ENOSYS,
+            FileNotFound { file: _ } => libc::EFAULT,
             InodeNotFound { inode: _ } => libc::EFAULT,
             FhNotFound { fh: _ } => libc::EFAULT,
             UnknownFileType => libc::EINVAL,

@@ -1,5 +1,6 @@
 pub mod async_fs;
 pub mod block;
+pub mod dir;
 pub mod error;
 pub mod inode;
 pub mod key;
