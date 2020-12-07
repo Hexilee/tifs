@@ -47,6 +47,10 @@ impl Directory {
             msg: err.to_string(),
         })
     }
+
+    pub fn into_map(self) -> HashMap<OsString, DirItem> {
+        self.0
+    }
 }
 
 impl Deref for Directory {

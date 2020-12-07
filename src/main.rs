@@ -1,3 +1,5 @@
+#![feature(map_into_keys_values)]
+
 mod fs;
 
 use clap::{crate_version, App, Arg};

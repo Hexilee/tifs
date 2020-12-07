@@ -25,10 +25,9 @@ pub struct TiFs {
     pd_endpoints: Vec<String>,
     config: Config,
     client: TransactionClient,
-
-    inode_cache: RwLock<LruCache<u64, Inode>>,
-    block_cache: RwLock<LruCache<ScopedKey, Vec<u8>>>,
-    dir_cache: RwLock<LruCache<u64, Directory>>,
+    // inode_cache: RwLock<LruCache<u64, Inode>>,
+    // block_cache: RwLock<LruCache<ScopedKey, Vec<u8>>>,
+    // dir_cache: RwLock<LruCache<u64, Directory>>,
 }
 
 impl TiFs {
@@ -49,11 +48,35 @@ impl TiFs {
             client: TransactionClient::new_with_config(pd_endpoints, cfg)
                 .await
                 .map_err(|err| anyhow!("{}", err))?,
-
-            inode_cache: RwLock::new(LruCache::new(Self::INODE_CACHE / size_of::<Inode>())),
-            block_cache: RwLock::new(LruCache::new(Self::BLOCK_CACHE / Self::BLOCK_SIZE)),
-            dir_cache: RwLock::new(LruCache::new(Self::DIR_CACHE / Self::BLOCK_SIZE)),
+            // inode_cache: RwLock::new(LruCache::new(Self::INODE_CACHE / size_of::<Inode>())),
+            // block_cache: RwLock::new(LruCache::new(Self::BLOCK_CACHE / Self::BLOCK_SIZE)),
+            // dir_cache: RwLock::new(LruCache::new(Self::DIR_CACHE / Self::BLOCK_SIZE)),
         })
+    }
+
+    async fn read_dir(&self, ino: u64) -> Result<Directory> {
+        let dir = self.getattr(ino).await?.attr;
+        let upper = (dir.size + Self::BLOCK_SIZE as u64 - 1) / Self::BLOCK_SIZE as u64;
+        let mut txn = self.client.begin().await?;
+        let entries = txn
+            .scan(ScopedKey::block_range(ino, 0..upper), upper as u32)
+            .await?;
+        let data = entries.fold(Vec::with_capacity(dir.size as usize), |mut data, block| {
+            data.extend(block.into_value());
+            data
+        });
+        txn.rollback().await?;
+        Directory::deserialize(&data)
+    }
+
+    async fn read_inode(&self, ino: u64) -> Result<FileAttr> {
+        let mut txn = self.client.begin().await?;
+        let value = txn
+            .get(ScopedKey::inode(ino).scoped())
+            .await?
+            .ok_or_else(|| FsError::InodeNotFound { inode: ino })?;
+        txn.rollback().await?;
+        Ok(Inode::deserialize(&value)?.0)
     }
 }
 
@@ -113,38 +136,27 @@ impl AsyncFileSystem for TiFs {
 
     #[tracing::instrument]
     async fn lookup(&self, parent: u64, name: OsString) -> Result<Entry> {
-        if let Some(dir) = self.dir_cache.read().await.get(&parent) {
-            return match dir.get(&name) {
-                None => Err(FsError::FileNotFound {
-                    file: name.to_string_lossy().to_string(),
-                }),
-                Some(item) => {
-                    let attr = self.getattr(item.ino).await?;
-                    Ok(Entry::new(attr.attr, 0))
-                }
-            };
-        }
-
-        let dir = self.getattr(parent).await?.attr;
-        if dir.size == 0 {
-            return Err(FsError::FileNotFound {
-                file: name.to_string_lossy().to_string(),
-            });
-        }
+        // TODO: use cache
+        let dir = self.read_dir(parent).await?;
+        let file = dir.get(&name).ok_or_else(|| FsError::FileNotFound {
+            file: name.to_string_lossy().to_string(),
+        })?;
+        Ok(Entry::new(self.read_inode(file.ino).await?, 0))
     }
 
     #[tracing::instrument]
     async fn getattr(&self, ino: u64) -> Result<Attr> {
-        let mut txn = self.client.begin().await?;
-        let value = txn
-            .get(ScopedKey::inode(ino).scoped())
-            .await?
-            .ok_or_else(|| FsError::InodeNotFound { inode: ino })?;
-        txn.rollback().await?;
-        Ok(Attr::new(Inode::deserialize(&value)?.0))
+        Ok(Attr::new(self.read_inode(ino).await?))
     }
 
-    async fn readdir(&self, _ino: u64, _fh: u64, offset: i64) -> Result<Dir> {
-        Ok(Dir::offset(offset as usize))
+    async fn readdir(&self, ino: u64, _fh: u64, offset: i64) -> Result<Dir> {
+        let directory = self.read_dir(ino).await?;
+        let mut dir = Dir::offset(offset as usize);
+        for (i, item) in directory.into_map().into_values().into_iter().enumerate() {
+            if i >= offset as usize {
+                dir.push(item)
+            }
+        }
+        Ok(dir)
     }
 }
