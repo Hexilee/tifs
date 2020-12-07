@@ -34,9 +34,9 @@ pub struct TiFs {
 impl TiFs {
     pub const SCAN_LIMIT: u32 = 1 << 10;
     pub const BLOCK_SIZE: usize = 1 << 12;
-    pub const BLOCK_CACHE: usize = 1 << 30;
-    pub const DIR_CACHE: usize = 1 << 29;
-    pub const INODE_CACHE: usize = 1 << 29;
+    pub const BLOCK_CACHE: usize = 1 << 25;
+    pub const DIR_CACHE: usize = 1 << 24;
+    pub const INODE_CACHE: usize = 1 << 24;
 
     pub async fn construct<S>(pd_endpoints: Vec<S>, cfg: Config) -> anyhow::Result<Self>
     where
