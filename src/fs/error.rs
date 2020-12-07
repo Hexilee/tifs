@@ -14,6 +14,13 @@ pub enum FsError {
     #[error("unimplemented")]
     Unimplemented,
 
+    #[error("fail to serialize/deserialize {target} as {typ}: `{msg}`")]
+    Serialize {
+        target: &'static str,
+        typ: &'static str,
+        msg: String,
+    },
+
     #[error("cannot find inode({inode})")]
     InodeNotFound { inode: u64 },
 

@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::fmt::Debug;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -12,11 +13,14 @@ pub enum Reply<'a> {
     Open(&'a mut Open),
     Attr(&'a mut Attr),
     Data(&'a mut Data),
+    Dir(&'a mut Dir),
+    DirPlus(&'a mut DirPlus),
     StatFs(&'a mut StatFs),
     Write(&'a mut Write),
     Create(&'a mut Create),
-    _Lock(&'a mut Lock),
+    Lock(&'a mut Lock),
     Xattr(&'a mut Xattr),
+    Bmap(&'a mut Bmap),
 }
 
 fn get_time() -> Duration {
@@ -72,6 +76,57 @@ pub struct Data {
 impl Data {
     pub fn new(data: Vec<u8>) -> Self {
         Self { data }
+    }
+}
+#[derive(Debug)]
+pub struct DirItem {
+    pub ino: u64,
+    pub name: OsString,
+    pub typ: FileType,
+}
+#[derive(Debug)]
+pub struct Dir {
+    offset: usize,
+    items: Vec<DirItem>,
+}
+
+impl Dir {
+    pub fn offset(offset: usize) -> Self {
+        Self {
+            offset,
+            items: Vec::new(),
+        }
+    }
+
+    pub fn new() -> Self {
+        Self::offset(0)
+    }
+
+    pub fn push(&mut self, item: DirItem) {
+        self.items.push(item)
+    }
+}
+
+#[derive(Debug)]
+pub struct DirPlus {
+    offset: usize,
+    items: Vec<(DirItem, Entry)>,
+}
+
+impl DirPlus {
+    pub fn offset(offset: usize) -> Self {
+        Self {
+            offset,
+            items: Vec::new(),
+        }
+    }
+
+    pub fn new() -> Self {
+        Self::offset(0)
+    }
+
+    pub fn push(&mut self, item: DirItem, entry: Entry) {
+        self.items.push((item, entry))
     }
 }
 
@@ -173,6 +228,28 @@ impl Xattr {
     }
 }
 
+#[derive(Debug)]
+pub struct Bmap {
+    block: u64,
+}
+
+impl Bmap {
+    pub fn new(block: u64) -> Self {
+        Self { block }
+    }
+}
+
+#[derive(Debug)]
+pub struct Lseek {
+    offset: i64,
+}
+
+impl Lseek {
+    pub fn new(offset: i64) -> Self {
+        Self { offset }
+    }
+}
+
 pub trait FsReply<T: Debug>: Sized {
     fn reply_ok(self, item: T);
     fn reply_err(self, err: libc::c_int);
@@ -232,6 +309,41 @@ impl FsReply<Data> for ReplyData {
     }
 }
 
+impl FsReply<Dir> for ReplyDirectory {
+    fn reply_ok(mut self, dir: Dir) {
+        for (index, item) in dir.items.into_iter().enumerate() {
+            if self.add(item.ino, (index + dir.offset) as i64, item.typ, item.name) {
+                break;
+            }
+        }
+        self.ok()
+    }
+    fn reply_err(self, err: libc::c_int) {
+        self.error(err);
+    }
+}
+
+impl FsReply<DirPlus> for ReplyDirectoryPlus {
+    fn reply_ok(mut self, dir: DirPlus) {
+        for (index, (item, entry)) in dir.items.into_iter().enumerate() {
+            if self.add(
+                item.ino,
+                (dir.offset + index) as i64,
+                item.name,
+                &entry.time,
+                &entry.stat,
+                entry.generation,
+            ) {
+                break;
+            }
+        }
+        self.ok()
+    }
+    fn reply_err(self, err: libc::c_int) {
+        self.error(err);
+    }
+}
+
 impl FsReply<StatFs> for ReplyStatfs {
     fn reply_ok(self, item: StatFs) {
         self.statfs(
@@ -284,6 +396,24 @@ impl FsReply<Xattr> for ReplyXattr {
             Data { data } => self.data(data.as_slice()),
             Size { size } => self.size(size),
         }
+    }
+    fn reply_err(self, err: libc::c_int) {
+        self.error(err);
+    }
+}
+
+impl FsReply<Bmap> for ReplyBmap {
+    fn reply_ok(self, item: Bmap) {
+        self.bmap(item.block)
+    }
+    fn reply_err(self, err: libc::c_int) {
+        self.error(err);
+    }
+}
+
+impl FsReply<Lseek> for ReplyLseek {
+    fn reply_ok(self, item: Lseek) {
+        self.offset(item.offset)
     }
     fn reply_err(self, err: libc::c_int) {
         self.error(err);

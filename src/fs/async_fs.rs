@@ -33,7 +33,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// Initialize filesystem.
     /// Called before any other filesystem method.
     /// The kernel module connection can be configured using the KernelConfig object
-    async fn init(&mut self, _config: &mut KernelConfig) -> Result<()> {
+    async fn init(&mut self) -> Result<()> {
         Ok(())
     }
 
@@ -247,8 +247,8 @@ pub trait AsyncFileSystem: Send + Sync {
     /// anything in fh, though that makes it impossible to implement standard conforming
     /// directory stream operations in case the contents of the directory can change
     /// between opendir and releasedir.
-    fn opendir(&mut self, _req: &Request<'_>, _ino: u64, _flags: i32, reply: ReplyOpen) {
-        reply.opened(0, 0);
+    async fn opendir(&mut self, _ino: u64, _flags: i32) -> Result<Open> {
+        Ok(Open::new(0, 0))
     }
 
     /// Read directory.
@@ -256,15 +256,8 @@ pub trait AsyncFileSystem: Send + Sync {
     /// requested size. Send an empty buffer on end of stream. fh will contain the
     /// value set by the opendir method, or will be undefined if the opendir method
     /// didn't set any value.
-    fn readdir(
-        &mut self,
-        _req: &Request<'_>,
-        _ino: u64,
-        _fh: u64,
-        _offset: i64,
-        reply: ReplyDirectory,
-    ) {
-        reply.error(ENOSYS);
+    async fn readdir(&mut self, _ino: u64, _fh: u64, offset: i64) -> Result<Dir> {
+        Ok(Dir::offset(offset as usize))
     }
 
     /// Read directory.
@@ -272,100 +265,70 @@ pub trait AsyncFileSystem: Send + Sync {
     /// requested size. Send an empty buffer on end of stream. fh will contain the
     /// value set by the opendir method, or will be undefined if the opendir method
     /// didn't set any value.
-    fn readdirplus(
-        &mut self,
-        _req: &Request<'_>,
-        _ino: u64,
-        _fh: u64,
-        _offset: i64,
-        reply: ReplyDirectoryPlus,
-    ) {
-        reply.error(ENOSYS);
+    async fn readdirplus(&mut self, _ino: u64, _fh: u64, offset: i64) -> Result<DirPlus> {
+        Ok(DirPlus::offset(offset as usize))
     }
 
     /// Release an open directory.
     /// For every opendir call there will be exactly one releasedir call. fh will
     /// contain the value set by the opendir method, or will be undefined if the
     /// opendir method didn't set any value.
-    fn releasedir(
-        &mut self,
-        _req: &Request<'_>,
-        _ino: u64,
-        _fh: u64,
-        _flags: i32,
-        reply: ReplyEmpty,
-    ) {
-        reply.ok();
+    async fn releasedir(&mut self, _ino: u64, _fh: u64, _flags: i32) -> Result<()> {
+        Err(FsError::unimplemented())
     }
 
     /// Synchronize directory contents.
     /// If the datasync parameter is set, then only the directory contents should
     /// be flushed, not the meta data. fh will contain the value set by the opendir
     /// method, or will be undefined if the opendir method didn't set any value.
-    fn fsyncdir(
-        &mut self,
-        _req: &Request<'_>,
-        _ino: u64,
-        _fh: u64,
-        _datasync: bool,
-        reply: ReplyEmpty,
-    ) {
-        reply.error(ENOSYS);
+    async fn fsyncdir(&mut self, _ino: u64, _fh: u64, _datasync: bool) -> Result<()> {
+        Err(FsError::unimplemented())
     }
 
     /// Get file system statistics.
-    fn statfs(&mut self, _req: &Request<'_>, _ino: u64, reply: ReplyStatfs) {
-        reply.statfs(0, 0, 0, 0, 0, 512, 255, 0);
+    async fn statfs(&mut self, _ino: u64) -> Result<StatFs> {
+        Ok(StatFs::new(0, 0, 0, 0, 0, 512, 255, 0))
     }
 
     /// Set an extended attribute.
-    fn setxattr(
+    async fn setxattr(
         &mut self,
-        _req: &Request<'_>,
         _ino: u64,
         _name: &OsStr,
         _value: &[u8],
         _flags: i32,
         _position: u32,
-        reply: ReplyEmpty,
-    ) {
-        reply.error(ENOSYS);
+    ) -> Result<()> {
+        Err(FsError::unimplemented())
     }
 
     /// Get an extended attribute.
     /// If `size` is 0, the size of the value should be sent with `reply.size()`.
     /// If `size` is not 0, and the value fits, send it with `reply.data()`, or
     /// `reply.error(ERANGE)` if it doesn't.
-    fn getxattr(
-        &mut self,
-        _req: &Request<'_>,
-        _ino: u64,
-        _name: &OsStr,
-        _size: u32,
-        reply: ReplyXattr,
-    ) {
-        reply.error(ENOSYS);
+    async fn getxattr(&mut self, _ino: u64, _name: &OsStr, _size: u32) -> Result<Xattr> {
+        Err(FsError::unimplemented())
     }
 
     /// List extended attribute names.
     /// If `size` is 0, the size of the value should be sent with `reply.size()`.
     /// If `size` is not 0, and the value fits, send it with `reply.data()`, or
     /// `reply.error(ERANGE)` if it doesn't.
-    fn listxattr(&mut self, _req: &Request<'_>, _ino: u64, _size: u32, reply: ReplyXattr) {
-        reply.error(ENOSYS);
+    async fn listxattr(&mut self, _ino: u64, _size: u32) -> Result<Xattr> {
+        Err(FsError::unimplemented())
     }
 
     /// Remove an extended attribute.
-    fn removexattr(&mut self, _req: &Request<'_>, _ino: u64, _name: &OsStr, reply: ReplyEmpty) {
-        reply.error(ENOSYS);
+    async fn removexattr(&mut self, _ino: u64, _name: &OsStr) -> Result<()> {
+        Err(FsError::unimplemented())
     }
 
     /// Check file access permissions.
     /// This will be called for the access() system call. If the 'default_permissions'
     /// mount option is given, this method is not called. This method is not called
     /// under Linux kernel versions 2.4.x
-    fn access(&mut self, _req: &Request<'_>, _ino: u64, _mask: i32, reply: ReplyEmpty) {
-        reply.error(ENOSYS);
+    async fn access(&mut self, _ino: u64, _mask: i32) -> Result<()> {
+        Err(FsError::unimplemented())
     }
 
     /// Create and open a file.
@@ -378,23 +341,20 @@ pub trait AsyncFileSystem: Send + Sync {
     /// structure in <fuse_common.h> for more details. If this method is not
     /// implemented or under Linux kernel versions earlier than 2.6.15, the mknod()
     /// and open() methods will be called instead.
-    fn create(
+    async fn create(
         &mut self,
-        _req: &Request<'_>,
         _parent: u64,
         _name: &OsStr,
         _mode: u32,
         _umask: u32,
         _flags: i32,
-        reply: ReplyCreate,
-    ) {
-        reply.error(ENOSYS);
+    ) -> Result<Create> {
+        Err(FsError::unimplemented())
     }
 
     /// Test for a POSIX file lock.
-    fn getlk(
+    async fn getlk(
         &mut self,
-        _req: &Request<'_>,
         _ino: u64,
         _fh: u64,
         _lock_owner: u64,
@@ -402,9 +362,8 @@ pub trait AsyncFileSystem: Send + Sync {
         _end: u64,
         _typ: i32,
         _pid: u32,
-        reply: ReplyLock,
-    ) {
-        reply.error(ENOSYS);
+    ) -> Result<Lock> {
+        Err(FsError::unimplemented())
     }
 
     /// Acquire, modify or release a POSIX file lock.
@@ -414,9 +373,8 @@ pub trait AsyncFileSystem: Send + Sync {
     /// used to fill in this field in getlk(). Note: if the locking methods are not
     /// implemented, the kernel will still allow file locking to work locally.
     /// Hence these are only interesting for network filesystems and similar.
-    fn setlk(
+    async fn setlk(
         &mut self,
-        _req: &Request<'_>,
         _ino: u64,
         _fh: u64,
         _lock_owner: u64,
@@ -425,71 +383,37 @@ pub trait AsyncFileSystem: Send + Sync {
         _typ: i32,
         _pid: u32,
         _sleep: bool,
-        reply: ReplyEmpty,
-    ) {
-        reply.error(ENOSYS);
+    ) -> Result<()> {
+        Err(FsError::unimplemented())
     }
 
     /// Map block index within file to block index within device.
     /// Note: This makes sense only for block device backed filesystems mounted
     /// with the 'blkdev' option
-    fn bmap(
-        &mut self,
-        _req: &Request<'_>,
-        _ino: u64,
-        _blocksize: u32,
-        _idx: u64,
-        reply: ReplyBmap,
-    ) {
-        reply.error(ENOSYS);
-    }
-
-    /// control device
-    fn ioctl(
-        &mut self,
-        _req: &Request<'_>,
-        _ino: u64,
-        _fh: u64,
-        _flags: u32,
-        _cmd: u32,
-        _in_data: &[u8],
-        _out_size: u32,
-        reply: ReplyIoctl,
-    ) {
-        reply.error(ENOSYS);
+    async fn bmap(&mut self, _ino: u64, _blocksize: u32, _idx: u64) -> Result<Bmap> {
+        Err(FsError::unimplemented())
     }
 
     /// Preallocate or deallocate space to a file
-    fn fallocate(
+    async fn fallocate(
         &mut self,
-        _req: &Request<'_>,
         _ino: u64,
         _fh: u64,
         _offset: i64,
         _length: i64,
         _mode: i32,
-        reply: ReplyEmpty,
-    ) {
-        reply.error(ENOSYS);
+    ) -> Result<()> {
+        Err(FsError::unimplemented())
     }
 
     /// Reposition read/write file offset
-    fn lseek(
-        &mut self,
-        _req: &Request<'_>,
-        _ino: u64,
-        _fh: u64,
-        _offset: i64,
-        _whence: i32,
-        reply: ReplyLseek,
-    ) {
-        reply.error(ENOSYS);
+    async fn lseek(&mut self, _ino: u64, _fh: u64, _offset: i64, _whence: i32) -> Result<Lseek> {
+        Err(FsError::unimplemented())
     }
 
     /// Copy the specified range from the source inode to the destination inode
-    fn copy_file_range(
+    async fn copy_file_range(
         &mut self,
-        _req: &Request<'_>,
         _ino_in: u64,
         _fh_in: u64,
         _offset_in: i64,
@@ -498,38 +422,8 @@ pub trait AsyncFileSystem: Send + Sync {
         _offset_out: i64,
         _len: u64,
         _flags: u32,
-        reply: ReplyWrite,
-    ) {
-        reply.error(ENOSYS);
-    }
-
-    /// macOS only: Rename the volume. Set fuse_init_out.flags during init to
-    /// FUSE_VOL_RENAME to enable
-    #[cfg(target_os = "macos")]
-    fn setvolname(&mut self, _req: &Request<'_>, _name: &OsStr, reply: ReplyEmpty) {
-        reply.error(ENOSYS);
-    }
-
-    /// macOS only (undocumented)
-    #[cfg(target_os = "macos")]
-    fn exchange(
-        &mut self,
-        _req: &Request<'_>,
-        _parent: u64,
-        _name: &OsStr,
-        _newparent: u64,
-        _newname: &OsStr,
-        _options: u64,
-        reply: ReplyEmpty,
-    ) {
-        reply.error(ENOSYS);
-    }
-
-    /// macOS only: Query extended times (bkuptime and crtime). Set fuse_init_out.flags
-    /// during init to FUSE_XTIMES to enable
-    #[cfg(target_os = "macos")]
-    fn getxtimes(&mut self, _req: &Request<'_>, _ino: u64, reply: ReplyXTimes) {
-        reply.error(ENOSYS);
+    ) -> Result<Write> {
+        Err(FsError::unimplemented())
     }
 }
 
@@ -548,11 +442,15 @@ impl<T: Debug> Debug for AsyncFs<T> {
 }
 
 impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
-    fn init(&mut self, _req: &fuse::Request) -> std::result::Result<(), nix::libc::c_int> {
+    fn init(
+        &mut self,
+        _req: &Request,
+        _config: &mut KernelConfig,
+    ) -> std::result::Result<(), nix::libc::c_int> {
         block_on(self.0.init()).map_err(|err| err.into())
     }
 
-    fn destroy(&mut self, _req: &fuse::Request) {
+    fn destroy(&mut self, _req: &Request) {
         block_on(self.0.destroy())
     }
 
@@ -590,12 +488,13 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
         uid: Option<u32>,
         gid: Option<u32>,
         size: Option<u64>,
-        atime: Option<Timespec>,
-        mtime: Option<Timespec>,
+        atime: Option<TimeOrNow>,
+        mtime: Option<TimeOrNow>,
+        ctime: Option<SystemTime>,
         fh: Option<u64>,
-        crtime: Option<Timespec>,
-        chgtime: Option<Timespec>,
-        bkuptime: Option<Timespec>,
+        crtime: Option<SystemTime>,
+        chgtime: Option<SystemTime>,
+        bkuptime: Option<SystemTime>,
         flags: Option<u32>,
         reply: ReplyAttr,
     ) {
