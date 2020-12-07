@@ -1,6 +1,7 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::SystemTime;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -60,9 +61,29 @@ impl AsyncFileSystem for TiFs {
         if let Some(key) = max_key {
             self.inode_next
                 .store(ScopedKey::from(key).key() + 1, Ordering::Relaxed)
+        } else {
+            let root = Inode(FileAttr {
+                ino: FUSE_ROOT_ID,
+                size: 0,
+                blocks: 0,
+                atime: SystemTime::now(),
+                mtime: SystemTime::now(),
+                ctime: SystemTime::now(),
+                crtime: SystemTime::now(),
+                kind: FileType::Directory,
+                perm: 0o777,
+                nlink: 2,
+                uid: 0,
+                gid: 0,
+                rdev: 0,
+                blksize: Self::BLOCK_SIZE as u32,
+                padding: 0,
+                flags: 0,
+            });
+            txn.put(ScopedKey::root(), root.serialize()?).await?;
         }
 
-        Ok(txn.rollback().await?)
+        Ok(txn.commit().await?)
     }
 
     async fn getattr(&self, ino: u64) -> Result<Attr> {

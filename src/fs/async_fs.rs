@@ -425,9 +425,9 @@ pub trait AsyncFileSystem: Send + Sync {
 
 pub struct AsyncFs<T>(Arc<T>);
 
-impl<T: AsyncFileSystem> From<Arc<T>> for AsyncFs<T> {
-    fn from(inner: Arc<T>) -> Self {
-        Self(inner)
+impl<T: AsyncFileSystem> From<T> for AsyncFs<T> {
+    fn from(inner: T) -> Self {
+        Self(Arc::new(inner))
     }
 }
 

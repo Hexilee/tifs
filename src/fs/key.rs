@@ -5,7 +5,7 @@ use std::ops::Range;
 use tikv_client::Key;
 
 pub const INODE_SCOPE: u64 = 0;
-pub const ROOT_INODE: u64 = 1;
+pub const ROOT_INODE: u64 = fuser::FUSE_ROOT_ID;
 pub const KEY_LEN: usize = size_of::<u64>() * 2;
 
 pub struct ScopedKey {
@@ -55,5 +55,11 @@ impl From<Key> for ScopedKey {
             u64::from_be_bytes(data[..8].try_into().unwrap()),
             u64::from_be_bytes(data[8..].try_into().unwrap()),
         )
+    }
+}
+
+impl From<ScopedKey> for Key {
+    fn from(key: ScopedKey) -> Self {
+        key.scoped()
     }
 }
