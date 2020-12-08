@@ -5,6 +5,7 @@ use std::mem::size_of;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
+use std::pin::Pin;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -22,16 +23,50 @@ use super::key::{ScopedKey, ROOT_INODE};
 use super::reply::*;
 
 pub struct TiFs {
-    pub(crate) inode_next: AtomicU64,
-    pub(crate) pd_endpoints: Vec<String>,
-    pub(crate) config: Config,
-    pub(crate) client: TransactionClient,
+    inode_next: AtomicU64,
+    pd_endpoints: Vec<String>,
+    config: Config,
+    client: TransactionClient,
 
-    pub(crate) hub: FileHub,
+    hub: FileHub,
     // inode_cache: RwLock<LruCache<u64, Inode>>,
     // block_cache: RwLock<LruCache<ScopedKey, Vec<u8>>>,
     // dir_cache: RwLock<LruCache<u64, Directory>>,
 }
+
+trait WithTransaction<T> {
+    type InputFuture<'b>: 'b + Future<Output=Result<T>>;
+    type ResultFuture<'a>: 'a + Future<Output=Result<T>>;
+
+    fn with_txn<'b, F>(&'b self, f: F) -> Self::ResultFuture<'b>
+    where
+        F: for <'a> FnOnce(&'a mut Transaction) -> Self::InputFuture<'a>;
+}
+
+impl <T: 'static> WithTransaction<T> for TiFs {
+    type InputFuture<'b> = impl Future<Output=Result<T>> + 'b;
+    type ResultFuture<'a> = impl Future<Output=Result<T>> + 'a;
+
+    fn with_txn<'b, F>(&'b self, f: F) -> Self::ResultFuture<'b>
+    where
+        F: 'static + for <'a> FnOnce(&'a mut Transaction) -> Self::InputFuture<'a>,
+    {
+        async move {
+            let mut txn = self.client.begin().await?;
+            match f(&mut txn).await {
+                Ok(v) => {
+                    txn.commit().await?;
+                    Ok(v)
+                }
+                Err(e) => {
+                    txn.rollback().await?;
+                    Err(e)
+                }
+            }
+        }
+    }
+}
+
 
 impl TiFs {
     pub const SCAN_LIMIT: u32 = 1 << 10;
@@ -59,25 +94,6 @@ impl TiFs {
         })
     }
 
-    async fn with_txn<F, Fut, T>(&self, f: F) -> Result<T>
-    where
-        T: 'static,
-        Fut: Future<Output = Result<T>>,
-        F: FnOnce(&Self, &mut Transaction) -> Fut,
-    {
-        let mut txn = self.client.begin().await?;
-        match f(self, &mut txn).await {
-            Ok(v) => {
-                txn.commit().await?;
-                Ok(v)
-            }
-            Err(e) => {
-                txn.rollback().await?;
-                Err(e)
-            }
-        }
-    }
-
     async fn read_fh(&self, ino: u64, fh: u64) -> Result<FileHandler> {
         self.hub
             .get(ino, fh)
@@ -86,14 +102,15 @@ impl TiFs {
     }
 
     async fn read_data(&self, ino: u64, start: u64, chunk_size: Option<u64>) -> Result<Vec<u8>> {
-        self.with_txn(async move |fs, txn| {
-            let mut attr = fs.read_inode(ino).await?;
-            let size = chunk_size.unwrap_or_else(|| attr.size - start);
-            let target = attr.size.min(start + size);
+        let mut attr = self.read_inode(ino).await?;
+        let size = chunk_size.unwrap_or_else(|| attr.size - start);
+        let target = attr.size.min(start + size);
 
-            let data_size = target - start;
-            let start_block = start / Self::BLOCK_SIZE;
-            let end_block = (target + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
+        let data_size = target - start;
+        let start_block = start / Self::BLOCK_SIZE;
+        let end_block = (target + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
+
+        self.with_txn(async move |txn|  {
             let pairs = txn
                 .scan(
                     ScopedKey::block_range(ino, start_block..end_block),
@@ -119,7 +136,7 @@ impl TiFs {
             );
 
             attr.atime = SystemTime::now();
-            fs.save_inode(txn, attr.into()).await?;
+            Self::save_inode(txn, attr.into()).await?;
             Ok(data)
         })
         .await
@@ -208,7 +225,7 @@ impl TiFs {
         Ok(Inode::deserialize(&value)?.0)
     }
 
-    async fn save_inode(&self, txn: &mut Transaction, mut inode: Inode) -> Result<()> {
+    async fn save_inode(txn: &mut Transaction, mut inode: Inode) -> Result<()> {
         inode.0.mtime = SystemTime::now();
         txn.put(ScopedKey::inode(inode.0.ino).scoped(), inode.serialize()?)
             .await?;
@@ -264,7 +281,7 @@ impl AsyncFileSystem for TiFs {
                 padding: 0,
                 flags: 0,
             });
-            self.save_inode(&mut txn, root).await?;
+            Self::save_inode(&mut txn, root).await?;
             self.inode_next.store(2, Ordering::Relaxed);
         }
 
