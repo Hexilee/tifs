@@ -22,5 +22,6 @@ serde = { version = "1", features = ["derive"] }
 bincode = "1.3.1"
 clap = "2.32"
 lru = "0.6"
+slab = "0.4.2"
 
 

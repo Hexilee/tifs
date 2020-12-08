@@ -24,3 +24,9 @@ impl Inode {
         })
     }
 }
+
+impl From<FileAttr> for Inode {
+    fn from(attr: FileAttr) -> Self {
+        Inode(attr)
+    }
+}

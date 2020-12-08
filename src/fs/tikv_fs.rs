@@ -6,16 +6,15 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
 
 use anyhow::anyhow;
-use async_std::sync::RwLock;
 use async_trait::async_trait;
 use fuser::*;
-use lru::LruCache;
 use tikv_client::{Config, Key, TransactionClient};
 use tracing::trace;
 
 use super::async_fs::AsyncFileSystem;
 use super::dir::Directory;
 use super::error::{FsError, Result};
+use super::file_handler::FileHub;
 use super::inode::Inode;
 use super::key::{ScopedKey, ROOT_INODE};
 use super::reply::*;
@@ -25,6 +24,8 @@ pub struct TiFs {
     pd_endpoints: Vec<String>,
     config: Config,
     client: TransactionClient,
+
+    hub: FileHub,
     // inode_cache: RwLock<LruCache<u64, Inode>>,
     // block_cache: RwLock<LruCache<ScopedKey, Vec<u8>>>,
     // dir_cache: RwLock<LruCache<u64, Directory>>,
@@ -48,6 +49,8 @@ impl TiFs {
             client: TransactionClient::new_with_config(pd_endpoints, cfg)
                 .await
                 .map_err(|err| anyhow!("{}", err))?,
+
+            hub: FileHub::new(),
             // inode_cache: RwLock::new(LruCache::new(Self::INODE_CACHE / size_of::<Inode>())),
             // block_cache: RwLock::new(LruCache::new(Self::BLOCK_CACHE / Self::BLOCK_SIZE)),
             // dir_cache: RwLock::new(LruCache::new(Self::DIR_CACHE / Self::BLOCK_SIZE)),
@@ -77,6 +80,15 @@ impl TiFs {
             .ok_or_else(|| FsError::InodeNotFound { inode: ino })?;
         txn.rollback().await?;
         Ok(Inode::deserialize(&value)?.0)
+    }
+
+    async fn save_inode(&self, mut inode: Inode) -> Result<()> {
+        inode.0.mtime = SystemTime::now();
+
+        let mut txn = self.client.begin().await?;
+        txn.put(ScopedKey::inode(inode.0.ino).scoped(), inode.serialize()?)
+            .await?;
+        Ok(txn.commit().await?)
     }
 }
 
@@ -158,5 +170,66 @@ impl AsyncFileSystem for TiFs {
             }
         }
         Ok(dir)
+    }
+
+    async fn open(&self, ino: u64, flags: i32) -> Result<Open> {
+        // TODO: deal with flags
+        let fh = self.hub.make(ino).await;
+        Ok(Open::new(fh, flags as u32))
+    }
+
+    async fn read(
+        &self,
+        ino: u64,
+        fh: u64,
+        offset: i64,
+        size: u32,
+        _flags: i32,
+        _lock_owner: Option<u64>,
+    ) -> Result<Data> {
+        let mut attr = self.read_inode(ino).await?;
+        let handler = self
+            .hub
+            .get(ino, fh)
+            .await
+            .ok_or_else(|| FsError::FhNotFound { fh })?;
+        let mut cursor = handler.cursor().await;
+        *cursor = ((*cursor) as i64 + offset) as usize;
+
+        let target = (attr.size as usize).min(*cursor + size as usize);
+
+        let mut data = Vec::with_capacity(target - *cursor);
+
+        let start_block = *cursor / Self::BLOCK_SIZE;
+        let end_block = (target + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
+
+        let mut txn = self.client.begin().await?;
+        let pairs = txn
+            .scan(
+                ScopedKey::block_range(ino, (start_block as u64)..(end_block as u64)),
+                (end_block - start_block) as u32,
+            )
+            .await?;
+
+        for (i, pair) in pairs.enumerate() {
+            let value = pair.into_value();
+            let mut slice = value.as_slice();
+            slice = match i {
+                0 => &slice[(start_block % Self::BLOCK_SIZE)..],
+                n if (n + 1) * Self::BLOCK_SIZE > data.capacity() => {
+                    &slice[..(data.capacity() % Self::BLOCK_SIZE)]
+                }
+                _ => slice,
+            };
+
+            data.extend(slice);
+        }
+
+        txn.rollback().await?;
+        *cursor = target;
+        attr.atime = SystemTime::now();
+        self.save_inode(attr.into()).await?;
+
+        Ok(Data::new(data))
     }
 }
