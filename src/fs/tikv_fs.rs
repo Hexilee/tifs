@@ -1,5 +1,6 @@
 use std::ffi::OsString;
 use std::fmt::{self, Debug};
+use std::future::Future;
 use std::mem::size_of;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -8,24 +9,25 @@ use std::time::SystemTime;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use fuser::*;
-use tikv_client::{Config, Key, TransactionClient};
+use futures::future::try_join_all;
+use tikv_client::{Config, Key, Transaction, TransactionClient};
 use tracing::trace;
 
 use super::async_fs::AsyncFileSystem;
 use super::dir::Directory;
 use super::error::{FsError, Result};
-use super::file_handler::FileHub;
+use super::file_handler::{FileHandler, FileHub};
 use super::inode::Inode;
 use super::key::{ScopedKey, ROOT_INODE};
 use super::reply::*;
 
 pub struct TiFs {
-    inode_next: AtomicU64,
-    pd_endpoints: Vec<String>,
-    config: Config,
-    client: TransactionClient,
+    pub(crate) inode_next: AtomicU64,
+    pub(crate) pd_endpoints: Vec<String>,
+    pub(crate) config: Config,
+    pub(crate) client: TransactionClient,
 
-    hub: FileHub,
+    pub(crate) hub: FileHub,
     // inode_cache: RwLock<LruCache<u64, Inode>>,
     // block_cache: RwLock<LruCache<ScopedKey, Vec<u8>>>,
     // dir_cache: RwLock<LruCache<u64, Directory>>,
@@ -33,7 +35,7 @@ pub struct TiFs {
 
 impl TiFs {
     pub const SCAN_LIMIT: u32 = 1 << 10;
-    pub const BLOCK_SIZE: usize = 1 << 12;
+    pub const BLOCK_SIZE: u64 = 1 << 12;
     pub const BLOCK_CACHE: usize = 1 << 25;
     pub const DIR_CACHE: usize = 1 << 24;
     pub const INODE_CACHE: usize = 1 << 24;
@@ -57,18 +59,142 @@ impl TiFs {
         })
     }
 
-    async fn read_dir(&self, ino: u64) -> Result<Directory> {
-        let dir = self.getattr(ino).await?.attr;
-        let upper = (dir.size + Self::BLOCK_SIZE as u64 - 1) / Self::BLOCK_SIZE as u64;
+    async fn with_txn<F, Fut, T>(&self, f: F) -> Result<T>
+    where
+        T: 'static,
+        Fut: Future<Output = Result<T>>,
+        F: FnOnce(&Self, &mut Transaction) -> Fut,
+    {
         let mut txn = self.client.begin().await?;
-        let entries = txn
-            .scan(ScopedKey::block_range(ino, 0..upper), upper as u32)
-            .await?;
-        let data = entries.fold(Vec::with_capacity(dir.size as usize), |mut data, block| {
-            data.extend(block.into_value());
-            data
-        });
-        txn.rollback().await?;
+        match f(self, &mut txn).await {
+            Ok(v) => {
+                txn.commit().await?;
+                Ok(v)
+            }
+            Err(e) => {
+                txn.rollback().await?;
+                Err(e)
+            }
+        }
+    }
+
+    async fn read_fh(&self, ino: u64, fh: u64) -> Result<FileHandler> {
+        self.hub
+            .get(ino, fh)
+            .await
+            .ok_or_else(|| FsError::FhNotFound { fh })
+    }
+
+    async fn read_data(&self, ino: u64, start: u64, chunk_size: Option<u64>) -> Result<Vec<u8>> {
+        self.with_txn(async move |fs, txn| {
+            let mut attr = fs.read_inode(ino).await?;
+            let size = chunk_size.unwrap_or_else(|| attr.size - start);
+            let target = attr.size.min(start + size);
+
+            let data_size = target - start;
+            let start_block = start / Self::BLOCK_SIZE;
+            let end_block = (target + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
+            let pairs = txn
+                .scan(
+                    ScopedKey::block_range(ino, start_block..end_block),
+                    (end_block - start_block) as u32,
+                )
+                .await?;
+            let data = pairs.enumerate().fold(
+                Vec::with_capacity(data_size as usize),
+                |mut data, (i, pair)| {
+                    let value = pair.into_value();
+                    let mut slice = value.as_slice();
+                    slice = match i {
+                        0 => &slice[(start_block % Self::BLOCK_SIZE) as usize..],
+                        n if (n + 1) * Self::BLOCK_SIZE as usize > data_size as usize => {
+                            &slice[..(data_size % Self::BLOCK_SIZE) as usize]
+                        }
+                        _ => slice,
+                    };
+
+                    data.extend(slice);
+                    data
+                },
+            );
+
+            attr.atime = SystemTime::now();
+            fs.save_inode(txn, attr.into()).await?;
+            Ok(data)
+        })
+        .await
+    }
+
+    // async fn clear_data(&self, ino: u64) -> Result<usize> {
+    //     let mut attr = self.read_inode(ino).await?;
+    //     let end_block = (attr.size + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
+    //     let mut txn = self.client.begin().await?;
+    //     let delete_tasks = (0..end_block).into_iter().map(|block| txn.delete(ScopedKey::new(ino, block).scoped()));
+    //     try_join_all(delete_tasks).await?;
+
+    //     let data = pairs.enumerate().fold(
+    //         Vec::with_capacity(data_size as usize),
+    //         |mut data, (i, pair)| {
+    //             let value = pair.into_value();
+    //             let mut slice = value.as_slice();
+    //             slice = match i {
+    //                 0 => &slice[(start_block % Self::BLOCK_SIZE) as usize..],
+    //                 n if (n + 1) * Self::BLOCK_SIZE as usize > data_size as usize => {
+    //                     &slice[..(data_size % Self::BLOCK_SIZE) as usize]
+    //                 }
+    //                 _ => slice,
+    //             };
+
+    //             data.extend(slice);
+    //             data
+    //         },
+    //     );
+
+    //     attr.atime = SystemTime::now();
+    //     self.save_inode(&mut txn, attr.into()).await?;
+    //     Ok(data)
+    // }
+
+    // async fn write_data(&self, ino: u64, start: u64, data: Vec<u8>) -> Result<usize> {
+    //     let mut attr = self.read_inode(ino).await?;
+    //     let size = chunk_size.unwrap_or_else(|| attr.size - start);
+    //     let target = attr.size.min(start + size);
+
+    //     let data_size = target - start;
+    //     let start_block = start / Self::BLOCK_SIZE;
+    //     let end_block = (target + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
+    //     let mut txn = self.client.begin().await?;
+    //     let pairs = txn
+    //         .scan(
+    //             ScopedKey::block_range(ino, start_block..end_block),
+    //             (end_block - start_block) as u32,
+    //         )
+    //         .await?;
+    //     let data = pairs.enumerate().fold(
+    //         Vec::with_capacity(data_size as usize),
+    //         |mut data, (i, pair)| {
+    //             let value = pair.into_value();
+    //             let mut slice = value.as_slice();
+    //             slice = match i {
+    //                 0 => &slice[(start_block % Self::BLOCK_SIZE) as usize..],
+    //                 n if (n + 1) * Self::BLOCK_SIZE as usize > data_size as usize => {
+    //                     &slice[..(data_size % Self::BLOCK_SIZE) as usize]
+    //                 }
+    //                 _ => slice,
+    //             };
+
+    //             data.extend(slice);
+    //             data
+    //         },
+    //     );
+
+    //     attr.atime = SystemTime::now();
+    //     self.save_inode(&mut txn, attr.into()).await?;
+    //     Ok(data)
+    // }
+
+    async fn read_dir(&self, ino: u64) -> Result<Directory> {
+        let data = self.read_data(ino, 0, None).await?;
         Directory::deserialize(&data)
     }
 
@@ -82,13 +208,11 @@ impl TiFs {
         Ok(Inode::deserialize(&value)?.0)
     }
 
-    async fn save_inode(&self, mut inode: Inode) -> Result<()> {
+    async fn save_inode(&self, txn: &mut Transaction, mut inode: Inode) -> Result<()> {
         inode.0.mtime = SystemTime::now();
-
-        let mut txn = self.client.begin().await?;
         txn.put(ScopedKey::inode(inode.0.ino).scoped(), inode.serialize()?)
             .await?;
-        Ok(txn.commit().await?)
+        Ok(())
     }
 }
 
@@ -140,10 +264,11 @@ impl AsyncFileSystem for TiFs {
                 padding: 0,
                 flags: 0,
             });
-            txn.put(ScopedKey::root(), root.serialize()?).await?;
+            self.save_inode(&mut txn, root).await?;
+            self.inode_next.store(2, Ordering::Relaxed);
         }
 
-        Ok(txn.commit().await?)
+        Ok(())
     }
 
     #[tracing::instrument]
@@ -187,49 +312,36 @@ impl AsyncFileSystem for TiFs {
         _flags: i32,
         _lock_owner: Option<u64>,
     ) -> Result<Data> {
-        let mut attr = self.read_inode(ino).await?;
-        let handler = self
-            .hub
-            .get(ino, fh)
-            .await
-            .ok_or_else(|| FsError::FhNotFound { fh })?;
+        let handler = self.read_fh(ino, fh).await?;
         let mut cursor = handler.cursor().await;
         *cursor = ((*cursor) as i64 + offset) as usize;
-
-        let target = (attr.size as usize).min(*cursor + size as usize);
-
-        let mut data = Vec::with_capacity(target - *cursor);
-
-        let start_block = *cursor / Self::BLOCK_SIZE;
-        let end_block = (target + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
-
-        let mut txn = self.client.begin().await?;
-        let pairs = txn
-            .scan(
-                ScopedKey::block_range(ino, (start_block as u64)..(end_block as u64)),
-                (end_block - start_block) as u32,
-            )
+        let data = self
+            .read_data(ino, *cursor as u64, Some(size as u64))
             .await?;
-
-        for (i, pair) in pairs.enumerate() {
-            let value = pair.into_value();
-            let mut slice = value.as_slice();
-            slice = match i {
-                0 => &slice[(start_block % Self::BLOCK_SIZE)..],
-                n if (n + 1) * Self::BLOCK_SIZE > data.capacity() => {
-                    &slice[..(data.capacity() % Self::BLOCK_SIZE)]
-                }
-                _ => slice,
-            };
-
-            data.extend(slice);
-        }
-
-        txn.rollback().await?;
-        *cursor = target;
-        attr.atime = SystemTime::now();
-        self.save_inode(attr.into()).await?;
-
+        *cursor += data.len();
         Ok(Data::new(data))
+    }
+
+    /// Create a directory.
+    async fn mkdir(&self, parent: u64, name: OsString, mode: u32, _umask: u32) -> Result<Entry> {
+        Inode(FileAttr {
+            ino: FUSE_ROOT_ID,
+            size: 0,
+            blocks: 0,
+            atime: SystemTime::now(),
+            mtime: SystemTime::now(),
+            ctime: SystemTime::now(),
+            crtime: SystemTime::now(),
+            kind: FileType::Directory,
+            perm: 0o777,
+            nlink: 2,
+            uid: 0,
+            gid: 0,
+            rdev: 0,
+            blksize: Self::BLOCK_SIZE as u32,
+            padding: 0,
+            flags: 0,
+        });
+        Err(FsError::unimplemented())
     }
 }

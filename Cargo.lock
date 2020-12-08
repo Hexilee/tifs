@@ -1985,6 +1985,7 @@ dependencies = [
  "bincode",
  "clap",
  "fuser",
+ "futures 0.3.8",
  "libc",
  "lru",
  "nix",
