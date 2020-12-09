@@ -1,16 +1,13 @@
 use std::ffi::OsString;
 use std::fmt::{self, Debug};
 use std::future::Future;
-use std::mem::size_of;
-use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
-use std::pin::Pin;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
 use fuser::*;
-use futures::future::try_join_all;
 use tikv_client::{Config, Key, Transaction, TransactionClient};
 use tracing::trace;
 
@@ -34,39 +31,7 @@ pub struct TiFs {
     // dir_cache: RwLock<LruCache<u64, Directory>>,
 }
 
-trait WithTransaction<T> {
-    type InputFuture<'b>: 'b + Future<Output=Result<T>>;
-    type ResultFuture<'a>: 'a + Future<Output=Result<T>>;
-
-    fn with_txn<'b, F>(&'b self, f: F) -> Self::ResultFuture<'b>
-    where
-        F: for <'a> FnOnce(&'a mut Transaction) -> Self::InputFuture<'a>;
-}
-
-impl <T: 'static> WithTransaction<T> for TiFs {
-    type InputFuture<'b> = impl Future<Output=Result<T>> + 'b;
-    type ResultFuture<'a> = impl Future<Output=Result<T>> + 'a;
-
-    fn with_txn<'b, F>(&'b self, f: F) -> Self::ResultFuture<'b>
-    where
-        F: 'static + for <'a> FnOnce(&'a mut Transaction) -> Self::InputFuture<'a>,
-    {
-        async move {
-            let mut txn = self.client.begin().await?;
-            match f(&mut txn).await {
-                Ok(v) => {
-                    txn.commit().await?;
-                    Ok(v)
-                }
-                Err(e) => {
-                    txn.rollback().await?;
-                    Err(e)
-                }
-            }
-        }
-    }
-}
-
+type BoxedFuture<'a, T> = Pin<Box<dyn 'a + Send + Future<Output = Result<T>>>>;
 
 impl TiFs {
     pub const SCAN_LIMIT: u32 = 1 << 10;
@@ -94,6 +59,24 @@ impl TiFs {
         })
     }
 
+    async fn with_txn<'b, F, T>(&'b self, f: F) -> Result<T>
+    where
+        T: 'static + Send,
+        F: 'static + for<'a> FnOnce(&'a mut Transaction) -> BoxedFuture<'a, T>,
+    {
+        let mut txn = self.client.begin().await?;
+        match f(&mut txn).await {
+            Ok(v) => {
+                txn.commit().await?;
+                Ok(v)
+            }
+            Err(e) => {
+                txn.rollback().await?;
+                Err(e)
+            }
+        }
+    }
+
     async fn read_fh(&self, ino: u64, fh: u64) -> Result<FileHandler> {
         self.hub
             .get(ino, fh)
@@ -110,67 +93,60 @@ impl TiFs {
         let start_block = start / Self::BLOCK_SIZE;
         let end_block = (target + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
 
-        self.with_txn(async move |txn|  {
-            let pairs = txn
-                .scan(
-                    ScopedKey::block_range(ino, start_block..end_block),
-                    (end_block - start_block) as u32,
-                )
-                .await?;
-            let data = pairs.enumerate().fold(
-                Vec::with_capacity(data_size as usize),
-                |mut data, (i, pair)| {
-                    let value = pair.into_value();
-                    let mut slice = value.as_slice();
-                    slice = match i {
-                        0 => &slice[(start_block % Self::BLOCK_SIZE) as usize..],
-                        n if (n + 1) * Self::BLOCK_SIZE as usize > data_size as usize => {
-                            &slice[..(data_size % Self::BLOCK_SIZE) as usize]
-                        }
-                        _ => slice,
-                    };
+        self.with_txn(move |txn| {
+            Box::pin(async move {
+                let pairs = txn
+                    .scan(
+                        ScopedKey::block_range(ino, start_block..end_block),
+                        (end_block - start_block) as u32,
+                    )
+                    .await?;
+                let data = pairs.enumerate().fold(
+                    Vec::with_capacity(data_size as usize),
+                    |mut data, (i, pair)| {
+                        let value = pair.into_value();
+                        let mut slice = value.as_slice();
+                        slice = match i {
+                            0 => &slice[(start_block % Self::BLOCK_SIZE) as usize..],
+                            n if (n + 1) * Self::BLOCK_SIZE as usize > data_size as usize => {
+                                &slice[..(data_size % Self::BLOCK_SIZE) as usize]
+                            }
+                            _ => slice,
+                        };
 
-                    data.extend(slice);
-                    data
-                },
-            );
+                        data.extend(slice);
+                        data
+                    },
+                );
 
-            attr.atime = SystemTime::now();
-            Self::save_inode(txn, attr.into()).await?;
-            Ok(data)
+                attr.atime = SystemTime::now();
+                Self::save_inode(txn, attr.into()).await?;
+                Ok(data)
+            })
         })
         .await
     }
 
-    // async fn clear_data(&self, ino: u64) -> Result<usize> {
-    //     let mut attr = self.read_inode(ino).await?;
-    //     let end_block = (attr.size + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
-    //     let mut txn = self.client.begin().await?;
-    //     let delete_tasks = (0..end_block).into_iter().map(|block| txn.delete(ScopedKey::new(ino, block).scoped()));
-    //     try_join_all(delete_tasks).await?;
+    async fn clear_data(&self, ino: u64) -> Result<u64> {
+        let mut attr = self.read_inode(ino).await?;
+        let end_block = (attr.size + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
 
-    //     let data = pairs.enumerate().fold(
-    //         Vec::with_capacity(data_size as usize),
-    //         |mut data, (i, pair)| {
-    //             let value = pair.into_value();
-    //             let mut slice = value.as_slice();
-    //             slice = match i {
-    //                 0 => &slice[(start_block % Self::BLOCK_SIZE) as usize..],
-    //                 n if (n + 1) * Self::BLOCK_SIZE as usize > data_size as usize => {
-    //                     &slice[..(data_size % Self::BLOCK_SIZE) as usize]
-    //                 }
-    //                 _ => slice,
-    //             };
+        self.with_txn(move |txn| {
+            Box::pin(async move {
+                for block in 0..end_block {
+                    txn.delete(ScopedKey::new(ino, block).scoped()).await?;
+                }
 
-    //             data.extend(slice);
-    //             data
-    //         },
-    //     );
+                let clear_size = attr.size;
 
-    //     attr.atime = SystemTime::now();
-    //     self.save_inode(&mut txn, attr.into()).await?;
-    //     Ok(data)
-    // }
+                attr.size = 0;
+                attr.atime = SystemTime::now();
+                Self::save_inode(txn, attr.into()).await?;
+                Ok(clear_size)
+            })
+        })
+        .await
+    }
 
     // async fn write_data(&self, ino: u64, start: u64, data: Vec<u8>) -> Result<usize> {
     //     let mut attr = self.read_inode(ino).await?;

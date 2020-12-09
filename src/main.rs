@@ -1,7 +1,5 @@
 #![feature(map_into_keys_values)]
 #![feature(async_closure)]
-#![feature(generic_associated_types)]
-#![feature(type_alias_impl_trait)]
 
 mod fs;
 
