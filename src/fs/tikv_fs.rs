@@ -9,7 +9,7 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use fuser::*;
 use tikv_client::{Config, Key, Transaction, TransactionClient};
-use tracing::trace;
+use tracing::{debug, info, instrument};
 
 use super::async_fs::AsyncFileSystem;
 use super::dir::Directory;
@@ -20,12 +20,11 @@ use super::key::{ScopedKey, ROOT_INODE};
 use super::reply::*;
 
 pub struct TiFs {
-    inode_next: AtomicU64,
-    pd_endpoints: Vec<String>,
-    config: Config,
-    client: TransactionClient,
-
-    hub: FileHub,
+    pub(crate) inode_next: AtomicU64,
+    pub(crate) pd_endpoints: Vec<String>,
+    pub(crate) config: Config,
+    pub(crate) client: TransactionClient,
+    pub(crate) hub: FileHub,
     // inode_cache: RwLock<LruCache<u64, Inode>>,
     // block_cache: RwLock<LruCache<ScopedKey, Vec<u8>>>,
     // dir_cache: RwLock<LruCache<u64, Directory>>,
@@ -40,18 +39,20 @@ impl TiFs {
     pub const DIR_CACHE: usize = 1 << 24;
     pub const INODE_CACHE: usize = 1 << 24;
 
+    #[instrument]
     pub async fn construct<S>(pd_endpoints: Vec<S>, cfg: Config) -> anyhow::Result<Self>
     where
-        S: Clone + Into<String>,
+        S: Clone + Debug + Into<String>,
     {
+        let client = TransactionClient::new_with_config(pd_endpoints.clone(), cfg.clone())
+            .await
+            .map_err(|err| anyhow!("{}", err))?;
+        debug!("connected to pd endpoints: {:?}", pd_endpoints);
         Ok(TiFs {
+            client,
             inode_next: AtomicU64::new(ROOT_INODE),
             pd_endpoints: pd_endpoints.clone().into_iter().map(Into::into).collect(),
-            config: cfg.clone(),
-            client: TransactionClient::new_with_config(pd_endpoints, cfg)
-                .await
-                .map_err(|err| anyhow!("{}", err))?,
-
+            config: cfg,
             hub: FileHub::new(),
             // inode_cache: RwLock::new(LruCache::new(Self::INODE_CACHE / size_of::<Inode>())),
             // block_cache: RwLock::new(LruCache::new(Self::BLOCK_CACHE / Self::BLOCK_SIZE)),
@@ -59,13 +60,13 @@ impl TiFs {
         })
     }
 
-    async fn with_txn<'b, F, T>(&'b self, f: F) -> Result<T>
+    async fn with_txn<F, T>(&self, f: F) -> Result<T>
     where
         T: 'static + Send,
-        F: 'static + for<'a> FnOnce(&'a mut Transaction) -> BoxedFuture<'a, T>,
+        F: for<'a> FnOnce(&'a TiFs, &'a mut Transaction) -> BoxedFuture<'a, T>,
     {
         let mut txn = self.client.begin().await?;
-        match f(&mut txn).await {
+        match f(self, &mut txn).await {
             Ok(v) => {
                 txn.commit().await?;
                 Ok(v)
@@ -93,7 +94,7 @@ impl TiFs {
         let start_block = start / Self::BLOCK_SIZE;
         let end_block = (target + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
 
-        self.with_txn(move |txn| {
+        self.with_txn(move |_, txn| {
             Box::pin(async move {
                 let pairs = txn
                     .scan(
@@ -131,7 +132,7 @@ impl TiFs {
         let mut attr = self.read_inode(ino).await?;
         let end_block = (attr.size + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
 
-        self.with_txn(move |txn| {
+        self.with_txn(move |_, txn| {
             Box::pin(async move {
                 for block in 0..end_block {
                     txn.delete(ScopedKey::new(ino, block).scoped()).await?;
@@ -192,13 +193,16 @@ impl TiFs {
     }
 
     async fn read_inode(&self, ino: u64) -> Result<FileAttr> {
-        let mut txn = self.client.begin().await?;
-        let value = txn
-            .get(ScopedKey::inode(ino).scoped())
-            .await?
-            .ok_or_else(|| FsError::InodeNotFound { inode: ino })?;
-        txn.rollback().await?;
-        Ok(Inode::deserialize(&value)?.0)
+        self.with_txn(move |_, txn| {
+            Box::pin(async move {
+                let value = txn
+                    .get(ScopedKey::inode(ino).scoped())
+                    .await?
+                    .ok_or_else(|| FsError::InodeNotFound { inode: ino })?;
+                Ok(Inode::deserialize(&value)?.0)
+            })
+        })
+        .await
     }
 
     async fn save_inode(txn: &mut Transaction, mut inode: Inode) -> Result<()> {
@@ -219,49 +223,52 @@ impl Debug for TiFs {
 impl AsyncFileSystem for TiFs {
     #[tracing::instrument]
     async fn init(&self) -> Result<()> {
-        trace!("initializing tifs on {:?} ...", self.pd_endpoints);
-        let mut txn = self.client.begin().await?;
-        let mut start_inode = ROOT_INODE;
-        let mut max_key: Option<Key> = None;
-        loop {
-            let keys: Vec<Key> = txn
-                .scan_keys(ScopedKey::inode(start_inode).scoped().., Self::SCAN_LIMIT)
-                .await?
-                .collect();
-            if keys.is_empty() {
-                break;
-            }
-            max_key = Some(keys[keys.len() - 1].clone());
-            start_inode += Self::SCAN_LIMIT as u64
-        }
+        self.with_txn(move |fs, txn| {
+            Box::pin(async move {
+                info!("initializing tifs on {:?} ...", &fs.pd_endpoints);
+                let mut start_inode = ROOT_INODE;
+                let mut max_key: Option<Key> = None;
+                loop {
+                    let keys: Vec<Key> = txn
+                        .scan_keys(ScopedKey::inode(start_inode).scoped().., Self::SCAN_LIMIT)
+                        .await?
+                        .collect();
+                    if keys.is_empty() {
+                        break;
+                    }
+                    max_key = Some(keys[keys.len() - 1].clone());
+                    start_inode += Self::SCAN_LIMIT as u64;
+                }
 
-        if let Some(key) = max_key {
-            self.inode_next
-                .store(ScopedKey::from(key).key() + 1, Ordering::Relaxed)
-        } else {
-            let root = Inode(FileAttr {
-                ino: FUSE_ROOT_ID,
-                size: 0,
-                blocks: 0,
-                atime: SystemTime::now(),
-                mtime: SystemTime::now(),
-                ctime: SystemTime::now(),
-                crtime: SystemTime::now(),
-                kind: FileType::Directory,
-                perm: 0o777,
-                nlink: 2,
-                uid: 0,
-                gid: 0,
-                rdev: 0,
-                blksize: Self::BLOCK_SIZE as u32,
-                padding: 0,
-                flags: 0,
-            });
-            Self::save_inode(&mut txn, root).await?;
-            self.inode_next.store(2, Ordering::Relaxed);
-        }
-
-        Ok(())
+                if let Some(key) = max_key {
+                    fs.inode_next
+                        .store(ScopedKey::from(key).key() + 1, Ordering::Relaxed);
+                } else {
+                    let root = Inode(FileAttr {
+                        ino: FUSE_ROOT_ID,
+                        size: 0,
+                        blocks: 0,
+                        atime: SystemTime::now(),
+                        mtime: SystemTime::now(),
+                        ctime: SystemTime::now(),
+                        crtime: SystemTime::now(),
+                        kind: FileType::Directory,
+                        perm: 0o777,
+                        nlink: 2,
+                        uid: 0,
+                        gid: 0,
+                        rdev: 0,
+                        blksize: Self::BLOCK_SIZE as u32,
+                        padding: 0,
+                        flags: 0,
+                    });
+                    Self::save_inode(txn, root).await?;
+                    fs.inode_next.store(2, Ordering::Relaxed);
+                }
+                Ok(())
+            })
+        })
+        .await
     }
 
     #[tracing::instrument]
@@ -326,7 +333,7 @@ impl AsyncFileSystem for TiFs {
             ctime: SystemTime::now(),
             crtime: SystemTime::now(),
             kind: FileType::Directory,
-            perm: 0o777,
+            perm: mode as u16,
             nlink: 2,
             uid: 0,
             gid: 0,

@@ -51,15 +51,12 @@ async fn main() {
     };
 
     tracing_subscriber::fmt()
-        .with_max_level(log_level)
-        .with_env_filter(EnvFilter::from_default_env().add_directive("echo=trace".parse().unwrap()))
+        // .with_max_level(log_level)
+        .with_env_filter(EnvFilter::from_default_env())
         .try_init()
         .unwrap();
 
-    let mut options = vec![
-        MountOption::FSName("tifs".to_string()),
-        MountOption::AutoUnmount,
-    ];
+    let options = vec![MountOption::FSName("tifs".to_string())];
 
     let endpoints: Vec<&str> = matches
         .values_of("pd")
@@ -71,5 +68,6 @@ async fn main() {
     let fs_impl = TiFs::construct(endpoints, Default::default())
         .await
         .unwrap();
+
     fuser::mount2(AsyncFs::from(fs_impl), mountpoint, &options).unwrap();
 }
