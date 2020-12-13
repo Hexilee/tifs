@@ -149,43 +149,48 @@ impl TiFs {
         .await
     }
 
-    // async fn write_data(&self, ino: u64, start: u64, data: Vec<u8>) -> Result<usize> {
-    //     let mut attr = self.read_inode(ino).await?;
-    //     let size = chunk_size.unwrap_or_else(|| attr.size - start);
-    //     let target = attr.size.min(start + size);
+    async fn write_data(&self, ino: u64, start: u64, data: Vec<u8>) -> Result<usize> {
+        let mut attr = self.read_inode(ino).await?;
+        let size = data.len();
+        let target = start + size as u64;
 
-    //     let data_size = target - start;
-    //     let start_block = start / Self::BLOCK_SIZE;
-    //     let end_block = (target + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
-    //     let mut txn = self.client.begin().await?;
-    //     let pairs = txn
-    //         .scan(
-    //             ScopedKey::block_range(ino, start_block..end_block),
-    //             (end_block - start_block) as u32,
-    //         )
-    //         .await?;
-    //     let data = pairs.enumerate().fold(
-    //         Vec::with_capacity(data_size as usize),
-    //         |mut data, (i, pair)| {
-    //             let value = pair.into_value();
-    //             let mut slice = value.as_slice();
-    //             slice = match i {
-    //                 0 => &slice[(start_block % Self::BLOCK_SIZE) as usize..],
-    //                 n if (n + 1) * Self::BLOCK_SIZE as usize > data_size as usize => {
-    //                     &slice[..(data_size % Self::BLOCK_SIZE) as usize]
-    //                 }
-    //                 _ => slice,
-    //             };
+        let data_size = target - start;
+        let start_block = start / Self::BLOCK_SIZE;
+        let end_block = (target + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
 
-    //             data.extend(slice);
-    //             data
-    //         },
-    //     );
+        self.with_txn(move |_, txn| {
+            Box::pin(async move {
+                let pairs = txn
+                    .scan(
+                        ScopedKey::block_range(ino, start_block..end_block),
+                        (end_block - start_block) as u32,
+                    )
+                    .await?;
+                let data = pairs.enumerate().fold(
+                    Vec::with_capacity(data_size as usize),
+                    |mut data, (i, pair)| {
+                        let value = pair.into_value();
+                        let mut slice = value.as_slice();
+                        slice = match i {
+                            0 => &slice[(start_block % Self::BLOCK_SIZE) as usize..],
+                            n if (n + 1) * Self::BLOCK_SIZE as usize > data_size as usize => {
+                                &slice[..(data_size % Self::BLOCK_SIZE) as usize]
+                            }
+                            _ => slice,
+                        };
 
-    //     attr.atime = SystemTime::now();
-    //     self.save_inode(&mut txn, attr.into()).await?;
-    //     Ok(data)
-    // }
+                        data.extend(slice);
+                        data
+                    },
+                );
+
+                attr.atime = SystemTime::now();
+                Self::save_inode(txn, attr.into()).await?;
+                Ok(size)
+            })
+        })
+        .await
+    }
 
     async fn read_dir(&self, ino: u64) -> Result<Directory> {
         let data = self.read_data(ino, 0, None).await?;
@@ -274,11 +279,19 @@ impl AsyncFileSystem for TiFs {
     #[tracing::instrument]
     async fn lookup(&self, parent: u64, name: OsString) -> Result<Entry> {
         // TODO: use cache
-        let dir = self.read_dir(parent).await?;
-        let file = dir.get(&name).ok_or_else(|| FsError::FileNotFound {
-            file: name.to_string_lossy().to_string(),
-        })?;
-        Ok(Entry::new(self.read_inode(file.ino).await?, 0))
+
+        let ino = if parent < ROOT_INODE {
+            ROOT_INODE
+        } else {
+            let dir = self.read_dir(parent).await?;
+            dir.get(&name)
+                .ok_or_else(|| FsError::FileNotFound {
+                    file: name.to_string_lossy().to_string(),
+                })?
+                .ino
+        };
+
+        Ok(Entry::new(self.read_inode(ino).await?, 0))
     }
 
     #[tracing::instrument]
