@@ -154,35 +154,25 @@ impl TiFs {
         let size = data.len();
         let target = start + size as u64;
 
-        let data_size = target - start;
         let start_block = start / Self::BLOCK_SIZE;
+        let start_index = start % Self::BLOCK_SIZE;
         let end_block = (target + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
 
         self.with_txn(move |_, txn| {
             Box::pin(async move {
-                let pairs = txn
-                    .scan(
-                        ScopedKey::block_range(ino, start_block..end_block),
-                        (end_block - start_block) as u32,
-                    )
-                    .await?;
-                let data = pairs.enumerate().fold(
-                    Vec::with_capacity(data_size as usize),
-                    |mut data, (i, pair)| {
-                        let value = pair.into_value();
-                        let mut slice = value.as_slice();
-                        slice = match i {
-                            0 => &slice[(start_block % Self::BLOCK_SIZE) as usize..],
-                            n if (n + 1) * Self::BLOCK_SIZE as usize > data_size as usize => {
-                                &slice[..(data_size % Self::BLOCK_SIZE) as usize]
-                            }
-                            _ => slice,
-                        };
+                for block in start_block..end_block {
+                    let mut value = if block == start_block || block + 1 == end_block {
+                        txn.get(ScopedKey::new(ino, block).scoped())
+                            .await?
+                            .ok_or_else(|| FsError::BlockNotFound { inode: ino, block })?
+                    } else {
+                        Vec::with_capacity(Self::BLOCK_SIZE as usize)
+                    };
 
-                        data.extend(slice);
-                        data
-                    },
-                );
+                    if block == start_block && start_index != 0 {
+                        unsafe { value.set_len(start_index as usize) }
+                    }
+                }
 
                 attr.atime = SystemTime::now();
                 Self::save_inode(txn, attr.into()).await?;

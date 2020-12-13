@@ -30,6 +30,9 @@ pub enum FsError {
     #[error("cannot find fh({fh})")]
     FhNotFound { fh: u64 },
 
+    #[error("cannot find block(<{inode}>[{block}])")]
+    BlockNotFound { inode: u64, block: u64 },
+
     #[error("invalid string")]
     InvalidStr,
 
@@ -107,6 +110,7 @@ impl Into<libc::c_int> for FsError {
             FileNotFound { file: _ } => libc::EFAULT,
             InodeNotFound { inode: _ } => libc::EFAULT,
             FhNotFound { fh: _ } => libc::EFAULT,
+            BlockNotFound { inode: _, block: _ } => libc::ENOSYS,
             UnknownFileType => libc::EINVAL,
             InvalidStr => libc::EINVAL,
             _ => libc::EFAULT,
