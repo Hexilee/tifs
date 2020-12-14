@@ -155,13 +155,36 @@ impl TiFs {
         let target = start + size as u64;
 
         let start_block = start / Self::BLOCK_SIZE;
-        let start_index = start % Self::BLOCK_SIZE;
         let end_block = (target + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
+        let start_index = start % Self::BLOCK_SIZE;
 
         self.with_txn(move |_, txn| {
             Box::pin(async move {
+                let first_block_size = (Self::BLOCK_SIZE - start_index) as usize;
+
+                let (first_block, rest) = data.split_at((Self::BLOCK_SIZE - start_index) as usize);
+
+                let mut value = if start_index != 0 {
+                    let mut origin = txn
+                        .get(ScopedKey::new(ino, start_block).scoped())
+                        .await?
+                        .ok_or_else(|| FsError::BlockNotFound {
+                            inode: ino,
+                            block: start_block,
+                        })?;
+                    unsafe { origin.set_len(start_index as usize) }
+                    origin
+                } else {
+                    Vec::with_capacity(Self::BLOCK_SIZE as usize)
+                };
+
+                value.extend_from_slice(first_block);
+
                 for block in start_block..end_block {
-                    let mut value = if block == start_block || block + 1 == end_block {
+                    let is_first = block == start_block;
+                    let is_last = block + 1 == end_block && target < attr.size;
+
+                    let mut value = if is_first || is_last {
                         txn.get(ScopedKey::new(ino, block).scoped())
                             .await?
                             .ok_or_else(|| FsError::BlockNotFound { inode: ino, block })?
@@ -169,12 +192,25 @@ impl TiFs {
                         Vec::with_capacity(Self::BLOCK_SIZE as usize)
                     };
 
-                    if block == start_block && start_index != 0 {
+                    let write_size = if is_last {
+                        target % Self::BLOCK_SIZE
+                    } else {
+                        Self::BLOCK_SIZE
+                    };
+
+                    if is_first && start_index != 0 {
                         unsafe { value.set_len(start_index as usize) }
+                    }
+
+                    value.extend_from_slice(&data[(block * Self::BLOCK_SIZE) as usize..]);
+
+                    if is_last {
+                        unsafe { value.set_len((attr.size % Self::BLOCK_SIZE) as usize) }
                     }
                 }
 
                 attr.atime = SystemTime::now();
+                attr.size = attr.size.max(target);
                 Self::save_inode(txn, attr.into()).await?;
                 Ok(size)
             })
