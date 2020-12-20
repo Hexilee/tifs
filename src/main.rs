@@ -5,7 +5,6 @@ mod fs;
 
 use clap::{crate_version, App, Arg};
 use fuser::MountOption;
-use tracing::Level;
 use tracing_subscriber::EnvFilter;
 
 use fs::async_fs::AsyncFs;
@@ -33,22 +32,7 @@ async fn main() {
                 .help("Act as a client, and mount FUSE at given path")
                 .takes_value(true),
         )
-        .arg(
-            Arg::with_name("v")
-                .short("v")
-                .multiple(true)
-                .help("Sets the level of verbosity"),
-        )
         .get_matches();
-
-    let verbosity: u64 = matches.occurrences_of("v");
-    let log_level = match verbosity {
-        0 => Level::ERROR,
-        1 => Level::WARN,
-        2 => Level::INFO,
-        3 => Level::DEBUG,
-        _ => Level::TRACE,
-    };
 
     tracing_subscriber::fmt()
         // .with_max_level(log_level)

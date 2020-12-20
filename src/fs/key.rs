@@ -34,8 +34,8 @@ impl ScopedKey {
 
     pub fn scoped(&self) -> Key {
         let mut data = Vec::with_capacity(KEY_LEN);
-        data.extend(self.scope.to_be_bytes().into_iter());
-        data.extend(self.key.to_be_bytes().into_iter());
+        data.extend(self.scope.to_be_bytes().iter());
+        data.extend(self.key.to_be_bytes().iter());
         data.into()
     }
 
