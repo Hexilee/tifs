@@ -150,63 +150,55 @@ impl TiFs {
     }
 
     async fn write_data(&self, ino: u64, start: u64, data: Vec<u8>) -> Result<usize> {
-        let mut attr = self.read_inode(ino).await?;
-        let size = data.len();
-        let target = start + size as u64;
-
-        let start_block = start / Self::BLOCK_SIZE;
-        let end_block = (target + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
-        let start_index = start % Self::BLOCK_SIZE;
-
-        self.with_txn(move |_, txn| {
+        self.with_txn(move |fs, txn| {
             Box::pin(async move {
+                let mut attr = fs.read_inode(ino).await?;
+                let size = data.len();
+                let target = start + size as u64;
+
+                let mut block_index = start / Self::BLOCK_SIZE;
+                let start_key = ScopedKey::new(ino, block_index).scoped();
+                let start_index = start % Self::BLOCK_SIZE;
+
                 let first_block_size = (Self::BLOCK_SIZE - start_index) as usize;
 
-                let (first_block, rest) = data.split_at((Self::BLOCK_SIZE - start_index) as usize);
+                let (first_block, mut rest) = data.split_at(first_block_size.min(data.len()));
 
-                let mut value = if start_index != 0 {
-                    let mut origin = txn
-                        .get(ScopedKey::new(ino, start_block).scoped())
+                let mut start_value = if start_index > 0 {
+                    txn.get(start_key.clone())
                         .await?
                         .ok_or_else(|| FsError::BlockNotFound {
                             inode: ino,
-                            block: start_block,
-                        })?;
-                    unsafe { origin.set_len(start_index as usize) }
-                    origin
+                            block: block_index,
+                        })?
                 } else {
-                    Vec::with_capacity(Self::BLOCK_SIZE as usize)
+                    Vec::with_capacity(first_block.len())
                 };
 
-                value.extend_from_slice(first_block);
+                start_value.extend_from_slice(first_block);
+                txn.put(start_key, start_value).await?;
 
-                for block in start_block..end_block {
-                    let is_first = block == start_block;
-                    let is_last = block + 1 == end_block && target < attr.size;
+                while rest.len() != 0 {
+                    block_index += 1;
+                    let key = ScopedKey::new(ino, block_index).scoped();
+                    let (curent_block, current_rest) =
+                        rest.split_at((Self::BLOCK_SIZE as usize).min(rest.len()));
+                    let mut value = curent_block.to_vec();
+                    if value.len() != Self::BLOCK_SIZE as usize
+                        && (block_index * Self::BLOCK_SIZE + value.len() as u64) < attr.size
+                    {
+                        let last_value =
+                            txn.get(key.clone())
+                                .await?
+                                .ok_or_else(|| FsError::BlockNotFound {
+                                    inode: ino,
+                                    block: block_index,
+                                })?;
 
-                    let mut value = if is_first || is_last {
-                        txn.get(ScopedKey::new(ino, block).scoped())
-                            .await?
-                            .ok_or_else(|| FsError::BlockNotFound { inode: ino, block })?
-                    } else {
-                        Vec::with_capacity(Self::BLOCK_SIZE as usize)
-                    };
-
-                    let write_size = if is_last {
-                        target % Self::BLOCK_SIZE
-                    } else {
-                        Self::BLOCK_SIZE
-                    };
-
-                    if is_first && start_index != 0 {
-                        unsafe { value.set_len(start_index as usize) }
+                        value.extend_from_slice(&last_value[value.len()..]);
                     }
-
-                    value.extend_from_slice(&data[(block * Self::BLOCK_SIZE) as usize..]);
-
-                    if is_last {
-                        unsafe { value.set_len((attr.size % Self::BLOCK_SIZE) as usize) }
-                    }
+                    txn.put(key, value).await?;
+                    rest = current_rest;
                 }
 
                 attr.atime = SystemTime::now();
