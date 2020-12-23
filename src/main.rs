@@ -40,7 +40,11 @@ async fn main() {
         .try_init()
         .unwrap();
 
-    let options = vec![MountOption::FSName("tifs".to_string())];
+    let options = vec![
+        MountOption::FSName("tifs".to_string()),
+        MountOption::AllowOther,
+        MountOption::AutoUnmount,
+    ];
 
     let endpoints: Vec<&str> = matches
         .values_of("pd")
