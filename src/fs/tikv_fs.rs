@@ -8,7 +8,7 @@ use async_std::sync::Mutex;
 use async_trait::async_trait;
 use fuser::*;
 use tikv_client::{Config, TransactionClient};
-use tracing::{debug, info, instrument};
+use tracing::{info, instrument};
 
 use super::async_fs::AsyncFileSystem;
 use super::dir::Directory;
@@ -48,7 +48,7 @@ impl TiFs {
         let client = TransactionClient::new_with_config(pd_endpoints.clone(), cfg.clone())
             .await
             .map_err(|err| anyhow!("{}", err))?;
-        debug!("connected to pd endpoints: {:?}", pd_endpoints);
+        info!("connected to pd endpoints: {:?}", pd_endpoints);
         Ok(TiFs {
             client,
             meta: Mutex::new(Meta::new()),
@@ -131,6 +131,7 @@ impl AsyncFileSystem for TiFs {
             Box::pin(async move {
                 info!("initializing tifs on {:?} ...", &fs.pd_endpoints);
                 if let Some(meta) = txn.read_meta().await? {
+                    info!("read meta {:?}", &meta);
                     *fs.meta.lock().await = meta
                 } else {
                     let attr = txn
@@ -145,6 +146,7 @@ impl AsyncFileSystem for TiFs {
                         .await?;
                     let dir = Directory::new(attr.ino, 0);
                     txn.save_dir(attr.ino, &dir).await?;
+                    info!("make root directory {:?}", &dir);
                 }
                 Ok(())
             })
@@ -175,6 +177,7 @@ impl AsyncFileSystem for TiFs {
         Ok(Attr::new(self.read_inode(ino).await?))
     }
 
+    #[tracing::instrument]
     async fn readdir(&self, ino: u64, _fh: u64, offset: i64) -> Result<Dir> {
         let directory = self.read_dir(ino).await?;
         let mut dir = Dir::offset(offset as usize);
@@ -183,6 +186,7 @@ impl AsyncFileSystem for TiFs {
                 dir.push(item)
             }
         }
+        info!("read directory {:?}", &dir);
         Ok(dir)
     }
 

@@ -297,7 +297,12 @@ impl FsReply<Data> for ReplyData {
 impl FsReply<Dir> for ReplyDirectory {
     fn reply_ok(mut self, dir: Dir) {
         for (index, item) in dir.items.into_iter().enumerate() {
-            if self.add(item.ino, (index + dir.offset) as i64, item.typ, item.name) {
+            if self.add(
+                item.ino,
+                (index + 1 + dir.offset) as i64,
+                item.typ,
+                item.name,
+            ) {
                 break;
             }
         }
