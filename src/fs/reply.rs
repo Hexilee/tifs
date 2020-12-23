@@ -8,22 +8,6 @@ use tracing::{debug, error, trace};
 
 use super::error::Result;
 
-#[derive(Debug)]
-pub enum Reply<'a> {
-    Entry(&'a mut Entry),
-    Open(&'a mut Open),
-    Attr(&'a mut Attr),
-    Data(&'a mut Data),
-    Dir(&'a mut Dir),
-    DirPlus(&'a mut DirPlus),
-    StatFs(&'a mut StatFs),
-    Write(&'a mut Write),
-    Create(&'a mut Create),
-    Lock(&'a mut Lock),
-    Xattr(&'a mut Xattr),
-    Bmap(&'a mut Bmap),
-}
-
 fn get_time() -> Duration {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap()
 }

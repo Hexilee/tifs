@@ -2,23 +2,21 @@ use std::ffi::OsString;
 use std::fmt::{self, Debug};
 use std::future::Future;
 use std::pin::Pin;
-use std::time::SystemTime;
 
 use anyhow::anyhow;
 use async_std::sync::Mutex;
 use async_trait::async_trait;
 use fuser::*;
-use tikv_client::{Config, Key, TransactionClient};
+use tikv_client::{Config, TransactionClient};
 use tracing::{debug, info, instrument};
 
 use super::async_fs::AsyncFileSystem;
 use super::dir::Directory;
 use super::error::{FsError, Result};
 use super::file_handler::{FileHandler, FileHub};
-use super::inode::Inode;
 use super::key::ROOT_INODE;
 use super::meta::Meta;
-use super::mode::{as_file_kind, as_file_perm, make_mode};
+use super::mode::{as_file_perm, make_mode};
 use super::reply::*;
 use super::transaction::Txn;
 
@@ -227,7 +225,7 @@ impl AsyncFileSystem for TiFs {
         let mut cursor = handler.cursor().await;
         *cursor = (*cursor as i64 + offset) as usize;
         let data_len = data.len();
-        let data = self.write_data(ino, *cursor as u64, data).await?;
+        let _ = self.write_data(ino, *cursor as u64, data).await?;
         *cursor += data_len;
         Ok(Write::new(*cursor as u32))
     }
