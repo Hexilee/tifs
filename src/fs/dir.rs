@@ -2,29 +2,33 @@ use std::collections::HashMap;
 use std::ffi::OsString;
 use std::ops::Deref;
 
-use super::error::{FsError, Result};
-use super::reply::DirItem;
-
 use bincode::{deserialize, serialize};
 use fuser::FileType;
 use serde::{Deserialize, Serialize};
+
+use super::error::{FsError, Result};
+use super::key::ROOT_INODE;
+use super::reply::DirItem;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Directory(HashMap<OsString, DirItem>);
 
 impl Directory {
     pub fn new(ino: u64, parent: u64) -> Self {
-        Directory(HashMap::new())
-            .add(DirItem {
-                ino: ino,
-                name: ".".into(),
-                typ: FileType::Directory,
-            })
-            .add(DirItem {
+        let mut dir = Directory(HashMap::new()).add(DirItem {
+            ino: ino,
+            name: ".".into(),
+            typ: FileType::Directory,
+        });
+
+        if ino != ROOT_INODE {
+            dir = dir.add(DirItem {
                 ino: parent,
                 name: "..".into(),
                 typ: FileType::Directory,
-            })
+            });
+        }
+        dir
     }
 
     pub fn add(mut self, item: DirItem) -> Self {

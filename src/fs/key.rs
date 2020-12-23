@@ -15,15 +15,19 @@ pub struct ScopedKey {
 }
 
 impl ScopedKey {
-    pub fn new(scope: u64, key: u64) -> Self {
+    pub const fn new(scope: u64, key: u64) -> Self {
         Self { scope, key }
     }
 
-    pub fn inode(inode: u64) -> Self {
+    pub const fn meta() -> Self {
+        Self::new(0, 0)
+    }
+
+    pub const fn inode(inode: u64) -> Self {
         Self::new(INODE_SCOPE, inode)
     }
 
-    pub fn root() -> Self {
+    pub const fn root() -> Self {
         Self::inode(ROOT_INODE)
     }
 
@@ -39,11 +43,11 @@ impl ScopedKey {
         data.into()
     }
 
-    pub fn scope(&self) -> u64 {
+    pub const fn scope(&self) -> u64 {
         self.scope
     }
 
-    pub fn key(&self) -> u64 {
+    pub const fn key(&self) -> u64 {
         self.key
     }
 }

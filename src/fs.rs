@@ -5,5 +5,8 @@ pub mod error;
 pub mod file_handler;
 pub mod inode;
 pub mod key;
+pub mod meta;
+pub mod mode;
 pub mod reply;
 pub mod tikv_fs;
+pub mod transaction;

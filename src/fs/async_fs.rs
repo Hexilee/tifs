@@ -33,7 +33,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// Initialize filesystem.
     /// Called before any other filesystem method.
     /// The kernel module connection can be configured using the KernelConfig object
-    async fn init(&self) -> Result<()> {
+    async fn init(&self, _gid: u32, _uid: u32) -> Result<()> {
         Ok(())
     }
 
@@ -92,6 +92,8 @@ pub trait AsyncFileSystem: Send + Sync {
         _parent: u64,
         _name: OsString,
         _mode: u32,
+        _gid: u32,
+        _uid: u32,
         _umask: u32,
         _rdev: u32,
     ) -> Result<Entry> {
@@ -99,7 +101,15 @@ pub trait AsyncFileSystem: Send + Sync {
     }
 
     /// Create a directory.
-    async fn mkdir(&self, _parent: u64, _name: OsString, _mode: u32, _umask: u32) -> Result<Entry> {
+    async fn mkdir(
+        &self,
+        _parent: u64,
+        _name: OsString,
+        _mode: u32,
+        _gid: u32,
+        _uid: u32,
+        _umask: u32,
+    ) -> Result<Entry> {
         Err(FsError::unimplemented())
     }
 
@@ -440,10 +450,13 @@ impl<T: Debug> Debug for AsyncFs<T> {
 impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
     fn init(
         &mut self,
-        _req: &Request,
+        req: &Request,
         _config: &mut KernelConfig,
     ) -> std::result::Result<(), nix::libc::c_int> {
-        block_on(self.0.init()).map_err(|err| err.into())
+        let uid = req.uid();
+        let gid = req.gid();
+
+        block_on(self.0.init(gid, uid)).map_err(|err| err.into())
     }
 
     fn destroy(&mut self, _req: &Request) {
@@ -524,8 +537,13 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
     ) {
         let async_impl = self.0.clone();
         let name = name.to_owned();
+        let uid = req.uid();
+        let gid = req.gid();
+
         spawn_reply(req.unique(), reply, async move {
-            async_impl.mknod(parent, name, mode, umask, rdev).await
+            async_impl
+                .mknod(parent, name, mode, gid, uid, umask, rdev)
+                .await
         });
     }
 
@@ -540,8 +558,11 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
     ) {
         let async_impl = self.0.clone();
         let name = name.to_owned();
+        let uid = req.uid();
+        let gid = req.gid();
+
         spawn_reply(req.unique(), reply, async move {
-            async_impl.mkdir(parent, name, mode, umask).await
+            async_impl.mkdir(parent, name, mode, gid, uid, umask).await
         });
     }
 

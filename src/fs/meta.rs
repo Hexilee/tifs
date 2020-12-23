@@ -1,16 +1,24 @@
 use bincode::{deserialize, serialize};
-use fuser::FileAttr;
 use serde::{Deserialize, Serialize};
 
 use super::error::{FsError, Result};
+use super::key::ROOT_INODE;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct Inode(pub FileAttr);
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct Meta {
+    pub inode_next: u64,
+}
 
-impl Inode {
+impl Meta {
+    pub const fn new() -> Self {
+        Self {
+            inode_next: ROOT_INODE,
+        }
+    }
+
     pub fn serialize(&self) -> Result<Vec<u8>> {
         serialize(self).map_err(|err| FsError::Serialize {
-            target: "inode",
+            target: "meta",
             typ: "bincode",
             msg: err.to_string(),
         })
@@ -18,21 +26,9 @@ impl Inode {
 
     pub fn deserialize(bytes: &[u8]) -> Result<Self> {
         deserialize(bytes).map_err(|err| FsError::Serialize {
-            target: "inode",
+            target: "meta",
             typ: "bincode",
             msg: err.to_string(),
         })
-    }
-}
-
-impl From<FileAttr> for Inode {
-    fn from(attr: FileAttr) -> Self {
-        Inode(attr)
-    }
-}
-
-impl From<Inode> for FileAttr {
-    fn from(inode: Inode) -> Self {
-        inode.0
     }
 }

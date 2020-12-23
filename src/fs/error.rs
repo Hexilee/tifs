@@ -24,6 +24,9 @@ pub enum FsError {
     #[error("cannot find path({file})")]
     FileNotFound { file: String },
 
+    #[error("file({file}) already exist")]
+    FileExist { file: String },
+
     #[error("cannot find inode({inode})")]
     InodeNotFound { inode: u64 },
 
@@ -108,8 +111,9 @@ impl Into<libc::c_int> for FsError {
             Sys(errno) => errno as i32,
             Unimplemented => libc::ENOSYS,
             FileNotFound { file: _ } => libc::EFAULT,
+            FileExist { file: _ } => libc::EEXIST,
             InodeNotFound { inode: _ } => libc::EFAULT,
-            FhNotFound { fh: _ } => libc::EFAULT,
+            FhNotFound { fh: _ } => libc::EBADFD,
             BlockNotFound { inode: _, block: _ } => libc::ENOSYS,
             UnknownFileType => libc::EINVAL,
             InvalidStr => libc::EINVAL,
