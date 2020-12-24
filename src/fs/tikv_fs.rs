@@ -8,7 +8,7 @@ use async_std::sync::Mutex;
 use async_trait::async_trait;
 use fuser::*;
 use tikv_client::{Config, TransactionClient};
-use tracing::{info, instrument};
+use tracing::{debug, info, instrument, trace};
 
 use super::async_fs::AsyncFileSystem;
 use super::dir::Directory;
@@ -131,7 +131,7 @@ impl AsyncFileSystem for TiFs {
             Box::pin(async move {
                 info!("initializing tifs on {:?} ...", &fs.pd_endpoints);
                 if let Some(meta) = txn.read_meta().await? {
-                    info!("read meta {:?}", &meta);
+                    trace!("read meta {:?}", &meta);
                     *fs.meta.lock().await = meta
                 } else {
                     let attr = txn
@@ -146,7 +146,7 @@ impl AsyncFileSystem for TiFs {
                         .await?;
                     let dir = Directory::new(attr.ino, 0);
                     txn.save_dir(attr.ino, &dir).await?;
-                    info!("make root directory {:?}", &dir);
+                    trace!("make root directory {:?}", &dir);
                 }
                 Ok(())
             })
@@ -181,12 +181,15 @@ impl AsyncFileSystem for TiFs {
     async fn readdir(&self, ino: u64, _fh: u64, offset: i64) -> Result<Dir> {
         let directory = self.read_dir(ino).await?;
         let mut dir = Dir::offset(offset as usize);
-        for (i, item) in directory.into_map().into_values().into_iter().enumerate() {
-            if i >= offset as usize {
-                dir.push(item)
-            }
+        for (item) in directory
+            .into_map()
+            .into_values()
+            .into_iter()
+            .skip(offset as usize)
+        {
+            dir.push(item)
         }
-        info!("read directory {:?}", &dir);
+        debug!("read directory {:?}", &dir);
         Ok(dir)
     }
 
