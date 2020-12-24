@@ -110,7 +110,7 @@ impl Into<libc::c_int> for FsError {
         match self {
             Sys(errno) => errno as i32,
             Unimplemented => libc::ENOSYS,
-            FileNotFound { file: _ } => libc::EFAULT,
+            FileNotFound { file: _ } => libc::ENOENT,
             FileExist { file: _ } => libc::EEXIST,
             InodeNotFound { inode: _ } => libc::EFAULT,
             FhNotFound { fh: _ } => libc::EBADFD,

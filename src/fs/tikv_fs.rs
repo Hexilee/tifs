@@ -103,12 +103,8 @@ impl TiFs {
 
     pub async fn read_dir(&self, ino: u64) -> Result<Directory> {
         let data = self.read_data(ino, 0, None).await?;
+        debug!("read raw dir: {}", String::from_utf8_lossy(&data));
         Directory::deserialize(&data)
-    }
-
-    pub async fn save_dir(&self, ino: u64, dir: &Directory) -> Result<()> {
-        let _ = self.write_data(ino, 0, dir.serialize()?).await?;
-        Ok(())
     }
 
     async fn read_inode(&self, ino: u64) -> Result<FileAttr> {
@@ -135,7 +131,7 @@ impl AsyncFileSystem for TiFs {
                     *fs.meta.lock().await = meta
                 } else {
                     let attr = txn
-                        .make_inode(
+                        .mkdir(
                             fs,
                             0,
                             OsString::default(),
@@ -144,9 +140,7 @@ impl AsyncFileSystem for TiFs {
                             uid,
                         )
                         .await?;
-                    let dir = Directory::new(attr.ino, 0);
-                    txn.save_dir(attr.ino, &dir).await?;
-                    trace!("make root directory {:?}", &dir);
+                    trace!("make root directory {:?}", &attr);
                 }
                 Ok(())
             })
@@ -169,6 +163,7 @@ impl AsyncFileSystem for TiFs {
                 .ino
         };
 
+        debug!("get ino({})", ino);
         Ok(Entry::new(self.read_inode(ino).await?, 0))
     }
 
@@ -193,12 +188,14 @@ impl AsyncFileSystem for TiFs {
         Ok(dir)
     }
 
+    #[tracing::instrument]
     async fn open(&self, ino: u64, flags: i32) -> Result<Open> {
         // TODO: deal with flags
         let fh = self.hub.make(ino).await;
         Ok(Open::new(fh, flags as u32))
     }
 
+    #[tracing::instrument]
     async fn read(
         &self,
         ino: u64,
@@ -218,6 +215,7 @@ impl AsyncFileSystem for TiFs {
         Ok(Data::new(data))
     }
 
+    #[tracing::instrument]
     async fn write(
         &self,
         ino: u64,
@@ -238,6 +236,7 @@ impl AsyncFileSystem for TiFs {
     }
 
     /// Create a directory.
+    #[tracing::instrument]
     async fn mkdir(
         &self,
         parent: u64,
@@ -247,10 +246,13 @@ impl AsyncFileSystem for TiFs {
         uid: u32,
         _umask: u32,
     ) -> Result<Entry> {
-        let dir_mode = make_mode(FileType::Directory, as_file_perm(mode));
-        self.mknod(parent, name, dir_mode, gid, uid, 0, 0).await
+        let attr = self
+            .with_txn(move |fs, txn| Box::pin(txn.mkdir(fs, parent, name, mode, gid, uid)))
+            .await?;
+        Ok(Entry::new(attr, 0))
     }
 
+    #[tracing::instrument]
     async fn mknod(
         &self,
         parent: u64,

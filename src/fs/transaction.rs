@@ -2,15 +2,16 @@ use std::ffi::OsString;
 use std::ops::{Deref, DerefMut};
 use std::time::SystemTime;
 
-use fuser::FileAttr;
+use fuser::{FileAttr, FileType};
 use tikv_client::{Transaction, TransactionClient};
+use tracing::debug;
 
 use super::dir::Directory;
 use super::error::{FsError, Result};
 use super::inode::Inode;
 use super::key::{ScopedKey, ROOT_INODE};
 use super::meta::Meta;
-use super::mode::{as_file_kind, as_file_perm};
+use super::mode::{as_file_kind, as_file_perm, make_mode};
 use super::reply::DirItem;
 use super::tikv_fs::TiFs;
 
@@ -37,12 +38,15 @@ impl Txn {
         let mut meta = fs.meta.lock().await;
         let ino = meta.inode_next;
         meta.inode_next += 1;
+
+        debug!("get ino({})", ino);
         self.save_meta(&meta).await?;
 
         let file_type = as_file_kind(mode);
 
         if parent >= ROOT_INODE {
             let mut dir = self.read_dir(parent).await?;
+            debug!("read dir({:?})", &dir);
             if dir.contains_key(&name) {
                 return Err(FsError::FileExist {
                     file: name.to_string_lossy().to_string(),
@@ -55,7 +59,7 @@ impl Txn {
                 typ: file_type,
             });
 
-            self.save_dir(ino, &dir).await?;
+            self.save_dir(parent, &dir).await?;
             // TODO: update attributes of directory
         }
 
@@ -77,6 +81,8 @@ impl Txn {
             padding: 0,
             flags: 0,
         });
+
+        debug!("made inode ({:?})", &inode);
 
         self.save_inode(&mut inode).await?;
         Ok(inode.into())
@@ -222,13 +228,35 @@ impl Txn {
         Ok(size)
     }
 
+    pub async fn mkdir(
+        &mut self,
+        fs: &TiFs,
+        parent: u64,
+        name: OsString,
+        mode: u32,
+        gid: u32,
+        uid: u32,
+    ) -> Result<FileAttr> {
+        let dir_mode = make_mode(FileType::Directory, as_file_perm(mode));
+        let attr = self
+            .make_inode(fs, parent, name, dir_mode, gid, uid)
+            .await?;
+        let dir = Directory::new(attr.ino, 0);
+        self.save_dir(attr.ino, &dir).await?;
+        Ok(attr)
+    }
+
     pub async fn read_dir(&mut self, ino: u64) -> Result<Directory> {
         let data = self.read_data(ino, 0, None).await?;
         Directory::deserialize(&data)
     }
 
     pub async fn save_dir(&mut self, ino: u64, dir: &Directory) -> Result<()> {
-        let data = self.write_data(ino, 0, dir.serialize()?).await?;
+        let size = self.write_data(ino, 0, dir.serialize()?).await? as u64;
+        let mut attr = self.read_inode(ino).await?;
+        attr.size = size;
+        attr.blocks = (size + TiFs::BLOCK_SIZE - 1) / TiFs::BLOCK_SIZE;
+        self.save_inode(&mut attr.into()).await?;
         Ok(())
     }
 }
