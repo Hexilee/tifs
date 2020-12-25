@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::ffi::OsString;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 use bincode::{deserialize, serialize};
 use fuser::FileType;
@@ -62,5 +62,11 @@ impl Deref for Directory {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl DerefMut for Directory {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }

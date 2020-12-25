@@ -70,10 +70,12 @@ impl TiFs {
         match f(self, &mut txn).await {
             Ok(v) => {
                 txn.commit().await?;
+                debug!("transaction committed");
                 Ok(v)
             }
             Err(e) => {
                 txn.rollback().await?;
+                debug!("transaction rollbacked");
                 Err(e)
             }
         }
@@ -101,15 +103,29 @@ impl TiFs {
             .await
     }
 
-    pub async fn read_dir(&self, ino: u64) -> Result<Directory> {
-        let data = self.read_data(ino, 0, None).await?;
-        debug!("read raw dir: {}", String::from_utf8_lossy(&data));
-        Directory::deserialize(&data)
+    async fn read_dir(&self, ino: u64) -> Result<Directory> {
+        self.with_txn(move |_, txn| Box::pin(txn.read_dir(ino)))
+            .await
     }
 
     async fn read_inode(&self, ino: u64) -> Result<FileAttr> {
         self.with_txn(move |_, txn| Box::pin(txn.read_inode(ino)))
             .await
+    }
+
+    async fn lookup_file(&self, parent: u64, name: OsString) -> Result<DirItem> {
+        // TODO: use cache
+
+        let dir = self.read_dir(parent).await?;
+        let item = dir
+            .get(&name)
+            .ok_or_else(|| FsError::FileNotFound {
+                file: name.to_string_lossy().to_string(),
+            })?
+            .clone();
+
+        debug!("get item({:?})", &item);
+        Ok(item)
     }
 }
 
@@ -152,18 +168,7 @@ impl AsyncFileSystem for TiFs {
     async fn lookup(&self, parent: u64, name: OsString) -> Result<Entry> {
         // TODO: use cache
 
-        let ino = if parent < ROOT_INODE {
-            ROOT_INODE
-        } else {
-            let dir = self.read_dir(parent).await?;
-            dir.get(&name)
-                .ok_or_else(|| FsError::FileNotFound {
-                    file: name.to_string_lossy().to_string(),
-                })?
-                .ino
-        };
-
-        debug!("get ino({})", ino);
+        let ino = self.lookup_file(parent, name).await?.ino;
         Ok(Entry::new(self.read_inode(ino).await?, 0))
     }
 
@@ -250,6 +255,37 @@ impl AsyncFileSystem for TiFs {
             .with_txn(move |fs, txn| Box::pin(txn.mkdir(fs, parent, name, mode, gid, uid)))
             .await?;
         Ok(Entry::new(attr, 0))
+    }
+
+    #[tracing::instrument]
+    async fn rmdir(&self, parent: u64, name: OsString) -> Result<()> {
+        self.with_txn(move |_, txn| {
+            Box::pin(async move {
+                let mut dir = txn.read_dir(parent).await?;
+                let item = dir.remove(&name).ok_or_else(|| FsError::FileNotFound {
+                    file: name.to_string_lossy().to_string(),
+                })?;
+
+                txn.save_dir(parent, &dir).await?;
+
+                let dir_contents = txn.read_dir(item.ino).await?;
+                if let Some(_) = dir_contents
+                    .iter()
+                    .map(|(key, _)| key.to_string_lossy())
+                    .find(|key| key != "." && key != "..")
+                {
+                    let name_str = name.to_string_lossy().to_string();
+                    debug!("dir({}) not empty", &name_str);
+                    return Err(FsError::DirNotEmpty { dir: name_str });
+                }
+
+                let mut attr = txn.read_inode(item.ino).await?;
+                attr.nlink -= 1;
+                txn.save_inode(&mut attr.into()).await?;
+                Ok(())
+            })
+        })
+        .await
     }
 
     #[tracing::instrument]

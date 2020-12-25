@@ -63,7 +63,7 @@ impl Data {
         Self { data }
     }
 }
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DirItem {
     pub ino: u64,
     pub name: OsString,

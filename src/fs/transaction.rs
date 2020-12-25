@@ -97,9 +97,19 @@ impl Txn {
     }
 
     pub async fn save_inode(&mut self, inode: &mut Inode) -> Result<()> {
-        inode.0.mtime = SystemTime::now();
-        self.put(ScopedKey::inode(inode.0.ino).scoped(), inode.serialize()?)
-            .await?;
+        let key = ScopedKey::inode(inode.0.ino).scoped();
+
+        if inode.0.nlink == 0 {
+            self.delete(key).await?;
+        } else {
+            inode.0.mtime = SystemTime::now();
+            self.put(key, inode.serialize()?).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn remove_inode(&mut self, ino: u64) -> Result<()> {
+        self.delete(ScopedKey::inode(ino).scoped()).await?;
         Ok(())
     }
 
@@ -241,7 +251,7 @@ impl Txn {
         let attr = self
             .make_inode(fs, parent, name, dir_mode, gid, uid)
             .await?;
-        let dir = Directory::new(attr.ino, 0);
+        let dir = Directory::new(attr.ino, parent);
         self.save_dir(attr.ino, &dir).await?;
         Ok(attr)
     }
