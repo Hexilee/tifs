@@ -105,6 +105,7 @@ impl Txn {
         } else {
             inode.0.mtime = SystemTime::now();
             self.put(key, inode.serialize()?).await?;
+            debug!("save inode: {:?}", inode);
         }
         Ok(())
     }
@@ -236,6 +237,7 @@ impl Txn {
         attr.atime = SystemTime::now();
         attr.size = attr.size.max(target);
         self.save_inode(&mut attr.into()).await?;
+        debug!("write data: {}", String::from_utf8_lossy(&data));
         Ok(size)
     }
 
