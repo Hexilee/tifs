@@ -66,7 +66,7 @@ impl Data {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DirItem {
     pub ino: u64,
-    pub name: OsString,
+    pub name: String,
     pub typ: FileType,
 }
 #[derive(Debug)]

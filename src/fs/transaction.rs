@@ -30,7 +30,7 @@ impl Txn {
         &mut self,
         fs: &TiFs,
         parent: u64,
-        name: OsString,
+        raw_name: OsString,
         mode: u32,
         gid: u32,
         uid: u32,
@@ -43,19 +43,20 @@ impl Txn {
         self.save_meta(&meta).await?;
 
         let file_type = as_file_kind(mode);
+        let name = raw_name.to_string_lossy();
 
         if parent >= ROOT_INODE {
             let mut dir = self.read_dir(parent).await?;
             debug!("read dir({:?})", &dir);
-            if dir.contains_key(&name) {
+            if dir.contains_key(&*name) {
                 return Err(FsError::FileExist {
-                    file: name.to_string_lossy().to_string(),
+                    file: name.to_string(),
                 });
             }
 
             dir = dir.add(DirItem {
                 ino,
-                name: name.clone(),
+                name: name.to_string(),
                 typ: file_type,
             });
 
@@ -258,6 +259,7 @@ impl Txn {
 
     pub async fn read_dir(&mut self, ino: u64) -> Result<Directory> {
         let data = self.read_data(ino, 0, None).await?;
+        debug!("read data: {}", String::from_utf8_lossy(&data));
         Directory::deserialize(&data)
     }
 

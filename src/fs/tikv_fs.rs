@@ -118,7 +118,7 @@ impl TiFs {
 
         let dir = self.read_dir(parent).await?;
         let item = dir
-            .get(&name)
+            .get(&*name.to_string_lossy())
             .ok_or_else(|| FsError::FileNotFound {
                 file: name.to_string_lossy().to_string(),
             })?
@@ -258,12 +258,13 @@ impl AsyncFileSystem for TiFs {
     }
 
     #[tracing::instrument]
-    async fn rmdir(&self, parent: u64, name: OsString) -> Result<()> {
+    async fn rmdir(&self, parent: u64, raw_name: OsString) -> Result<()> {
         self.with_txn(move |_, txn| {
             Box::pin(async move {
                 let mut dir = txn.read_dir(parent).await?;
-                let item = dir.remove(&name).ok_or_else(|| FsError::FileNotFound {
-                    file: name.to_string_lossy().to_string(),
+                let name = raw_name.to_string_lossy();
+                let item = dir.remove(&*name).ok_or_else(|| FsError::FileNotFound {
+                    file: name.to_string(),
                 })?;
 
                 txn.save_dir(parent, &dir).await?;
@@ -271,10 +272,9 @@ impl AsyncFileSystem for TiFs {
                 let dir_contents = txn.read_dir(item.ino).await?;
                 if let Some(_) = dir_contents
                     .iter()
-                    .map(|(key, _)| key.to_string_lossy())
-                    .find(|key| key != "." && key != "..")
+                    .find(|(key, _)| key.as_str() != "." && key.as_str() != "..")
                 {
-                    let name_str = name.to_string_lossy().to_string();
+                    let name_str = name.to_string();
                     debug!("dir({}) not empty", &name_str);
                     return Err(FsError::DirNotEmpty { dir: name_str });
                 }

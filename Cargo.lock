@@ -1990,6 +1990,7 @@ dependencies = [
  "lru",
  "nix",
  "serde",
+ "serde_json",
  "slab",
  "thiserror",
  "tikv-client",

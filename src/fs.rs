@@ -8,5 +8,6 @@ pub mod key;
 pub mod meta;
 pub mod mode;
 pub mod reply;
+pub mod serialize;
 pub mod tikv_fs;
 pub mod transaction;

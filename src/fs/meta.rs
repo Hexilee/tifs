@@ -1,8 +1,8 @@
-use bincode::{deserialize, serialize};
 use serde::{Deserialize, Serialize};
 
 use super::error::{FsError, Result};
 use super::key::ROOT_INODE;
+use super::serialize::{deserialize, serialize, ENCODING};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct Meta {
@@ -19,7 +19,7 @@ impl Meta {
     pub fn serialize(&self) -> Result<Vec<u8>> {
         serialize(self).map_err(|err| FsError::Serialize {
             target: "meta",
-            typ: "bincode",
+            typ: ENCODING,
             msg: err.to_string(),
         })
     }
@@ -27,7 +27,7 @@ impl Meta {
     pub fn deserialize(bytes: &[u8]) -> Result<Self> {
         deserialize(bytes).map_err(|err| FsError::Serialize {
             target: "meta",
-            typ: "bincode",
+            typ: ENCODING,
             msg: err.to_string(),
         })
     }
