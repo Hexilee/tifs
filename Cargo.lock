@@ -561,7 +561,6 @@ checksum = "e5cd519583b0984ff2afd39b0c5b64b9520ef754c6d0330c54631595aa1de170"
 dependencies = [
  "libc",
  "log",
- "pkg-config",
  "serde",
  "users",
 ]
