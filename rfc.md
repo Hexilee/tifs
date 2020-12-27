@@ -1,11 +1,7 @@
 # TiFS: FUSE based on TiKV
 
----
-
 ## Summary
 As we can build a DBMS based on TiKV, we can also build a filesystem based on it.
-
----
 
 ## Detailed design
 
