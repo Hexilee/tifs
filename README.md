@@ -65,3 +65,12 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
     - [ ] cache
         - [ ] inode table
         - [ ] directory
+
+- [ ] Other
+    - [ ] benchmark
+    - [ ] real-world usage
+        - [ ] git clone
+        - [ ] cargo build
+        - [ ] npm install
+        - [ ] sqlite
+        - [ ] tikv on tifs
