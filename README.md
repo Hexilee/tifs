@@ -56,7 +56,7 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
     - [ ] setlk 
     - [ ] copy_file_range
 
-- [ ] Transaction
+- [ ] Consistency
     - [ ] select for update
         - [ ] next inode
         - [ ] nlinks
