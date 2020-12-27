@@ -24,13 +24,13 @@ RUST_LOG=info target/release/tifs --mount-point ~/mnt
 ```
 
 ## FUSE
-There is little docs about FUSE, refer to [example](https://github.com/cberner/fuser/blob/master/examples/simple.rs) for the meaning of FUSE APIs. 
+There is little docs about FUSE, refer to [example](https://github.com/cberner/fuser/blob/master/examples/simple.rs) for the meaning of FUSE API. 
 
 ## TODO
 
 > Item end with '?' means there are probably some bugs; Item end with '!' means there must be some bugs.
 
-- [ ] FUSE APIs
+- [ ] FUSE API
     - [x] init
     - [x] lookup
     - [x] getattr
@@ -56,7 +56,7 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
     - [ ] setlk 
     - [ ] copy_file_range
 
-- [ ] Consistency
+- [ ] Transaction
     - [ ] select for update
         - [ ] next inode
         - [ ] nlinks
