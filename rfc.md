@@ -34,7 +34,7 @@ As block scopes and inode scope are allocated, the `ScopedKey{ scope: 0, key: 0}
 
 ### Directory
 
-We can store `name -> ino` records by a `HashMap`, but the time complexity of deserialize a hash map is `O(n)`. Cache of directory may be neccessary.
+We can store `name -> ino` records by a hash map, but the time complexity of deserialize a hash map is `O(n)`. Cache of directory may be neccessary.
 
 ### Serialize
 We would use the serde framework to serialize meta, inode and directory. Taking both of human-readable and performance into consideration, we would use json in development and use bincode in production.
