@@ -59,7 +59,9 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
 - [ ] Consistency
     - [ ] select for update
         - [x] next inode
-        - [ ] nlinks
+        - [x] nlinks
+        - [ ] directory
+        - [ ] start and end block
 
 - [ ] Performance
     - [ ] cache

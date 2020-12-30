@@ -13,6 +13,7 @@ use super::async_fs::AsyncFileSystem;
 use super::dir::Directory;
 use super::error::{FsError, Result};
 use super::file_handler::{FileHandler, FileHub};
+use super::key::ROOT_INODE;
 use super::mode::{as_file_perm, make_mode};
 use super::reply::*;
 use super::transaction::Txn;
@@ -137,17 +138,22 @@ impl AsyncFileSystem for TiFs {
         self.with_txn(move |fs, txn| {
             Box::pin(async move {
                 info!("initializing tifs on {:?} ...", &fs.pd_endpoints);
-                let attr = txn
-                    .mkdir(
-                        0,
-                        OsString::default(),
-                        make_mode(FileType::Directory, 0o777),
-                        gid,
-                        uid,
-                    )
-                    .await?;
-                trace!("make root directory {:?}", &attr);
-                Ok(())
+                let root_inode = txn.read_inode(ROOT_INODE).await;
+                if let Err(FsError::InodeNotFound { inode: _ }) = root_inode {
+                    let attr = txn
+                        .mkdir(
+                            0,
+                            OsString::default(),
+                            make_mode(FileType::Directory, 0o777),
+                            gid,
+                            uid,
+                        )
+                        .await?;
+                    debug!("make root directory {:?}", &attr);
+                    Ok(())
+                } else {
+                    root_inode.map(|_| ())
+                }
             })
         })
         .await
@@ -256,8 +262,6 @@ impl AsyncFileSystem for TiFs {
                     file: name.to_string(),
                 })?;
 
-                txn.save_dir(parent, &dir).await?;
-
                 let dir_contents = txn.read_dir(item.ino).await?;
                 if let Some(_) = dir_contents
                     .iter()
@@ -268,9 +272,11 @@ impl AsyncFileSystem for TiFs {
                     return Err(FsError::DirNotEmpty { dir: name_str });
                 }
 
-                let mut attr = txn.read_inode(item.ino).await?;
+                txn.save_dir(parent, &dir).await?;
+                let mut attr = txn.read_inode_for_update(item.ino).await?;
                 attr.nlink -= 1;
                 txn.save_inode(&mut attr.into()).await?;
+
                 Ok(())
             })
         })

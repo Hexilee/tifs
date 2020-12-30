@@ -98,6 +98,14 @@ impl Txn {
         Ok(Inode::deserialize(&value)?.0)
     }
 
+    pub async fn read_inode_for_update(&mut self, ino: u64) -> Result<FileAttr> {
+        let value = self
+            .get_for_update(ScopedKey::inode(ino).scoped())
+            .await?
+            .ok_or_else(|| FsError::InodeNotFound { inode: ino })?;
+        Ok(Inode::deserialize(&value)?.0)
+    }
+
     pub async fn save_inode(&mut self, inode: &mut Inode) -> Result<()> {
         let key = ScopedKey::inode(inode.0.ino).scoped();
 
