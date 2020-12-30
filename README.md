@@ -58,7 +58,7 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
 
 - [ ] Consistency
     - [ ] select for update
-        - [ ] next inode
+        - [x] next inode
         - [ ] nlinks
 
 - [ ] Performance

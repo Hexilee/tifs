@@ -28,14 +28,15 @@ impl Txn {
 
     pub async fn make_inode(
         &mut self,
-        fs: &TiFs,
         parent: u64,
         raw_name: OsString,
         mode: u32,
         gid: u32,
         uid: u32,
     ) -> Result<FileAttr> {
-        let mut meta = fs.meta.lock().await;
+        let mut meta = self.read_meta_for_update().await?.unwrap_or_else(|| Meta {
+            inode_next: ROOT_INODE,
+        });
         let ino = meta.inode_next;
         meta.inode_next += 1;
 
@@ -117,6 +118,11 @@ impl Txn {
 
     pub async fn read_meta(&self) -> Result<Option<Meta>> {
         let opt_data = self.get(ScopedKey::meta().scoped()).await?;
+        opt_data.map(|data| Meta::deserialize(&data)).transpose()
+    }
+
+    pub async fn read_meta_for_update(&mut self) -> Result<Option<Meta>> {
+        let opt_data = self.get_for_update(ScopedKey::meta().scoped()).await?;
         opt_data.map(|data| Meta::deserialize(&data)).transpose()
     }
 
@@ -243,7 +249,6 @@ impl Txn {
 
     pub async fn mkdir(
         &mut self,
-        fs: &TiFs,
         parent: u64,
         name: OsString,
         mode: u32,
@@ -251,9 +256,7 @@ impl Txn {
         uid: u32,
     ) -> Result<FileAttr> {
         let dir_mode = make_mode(FileType::Directory, as_file_perm(mode));
-        let attr = self
-            .make_inode(fs, parent, name, dir_mode, gid, uid)
-            .await?;
+        let attr = self.make_inode(parent, name, dir_mode, gid, uid).await?;
         let dir = Directory::new(attr.ino, parent);
         self.save_dir(attr.ino, &dir).await?;
         Ok(attr)

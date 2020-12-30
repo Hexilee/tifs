@@ -4,7 +4,6 @@ use std::future::Future;
 use std::pin::Pin;
 
 use anyhow::anyhow;
-use async_std::sync::Mutex;
 use async_trait::async_trait;
 use fuser::*;
 use tikv_client::{Config, TransactionClient};
@@ -14,14 +13,11 @@ use super::async_fs::AsyncFileSystem;
 use super::dir::Directory;
 use super::error::{FsError, Result};
 use super::file_handler::{FileHandler, FileHub};
-use super::key::ROOT_INODE;
-use super::meta::Meta;
 use super::mode::{as_file_perm, make_mode};
 use super::reply::*;
 use super::transaction::Txn;
 
 pub struct TiFs {
-    pub meta: Mutex<Meta>,
     pub pd_endpoints: Vec<String>,
     pub config: Config,
     pub client: TransactionClient,
@@ -51,7 +47,6 @@ impl TiFs {
         info!("connected to pd endpoints: {:?}", pd_endpoints);
         Ok(TiFs {
             client,
-            meta: Mutex::new(Meta::new()),
             pd_endpoints: pd_endpoints.clone().into_iter().map(Into::into).collect(),
             config: cfg,
             hub: FileHub::new(),
@@ -142,22 +137,16 @@ impl AsyncFileSystem for TiFs {
         self.with_txn(move |fs, txn| {
             Box::pin(async move {
                 info!("initializing tifs on {:?} ...", &fs.pd_endpoints);
-                if let Some(meta) = txn.read_meta().await? {
-                    trace!("read meta {:?}", &meta);
-                    *fs.meta.lock().await = meta
-                } else {
-                    let attr = txn
-                        .mkdir(
-                            fs,
-                            0,
-                            OsString::default(),
-                            make_mode(FileType::Directory, 0o777),
-                            gid,
-                            uid,
-                        )
-                        .await?;
-                    trace!("make root directory {:?}", &attr);
-                }
+                let attr = txn
+                    .mkdir(
+                        0,
+                        OsString::default(),
+                        make_mode(FileType::Directory, 0o777),
+                        gid,
+                        uid,
+                    )
+                    .await?;
+                trace!("make root directory {:?}", &attr);
                 Ok(())
             })
         })
@@ -252,7 +241,7 @@ impl AsyncFileSystem for TiFs {
         _umask: u32,
     ) -> Result<Entry> {
         let attr = self
-            .with_txn(move |fs, txn| Box::pin(txn.mkdir(fs, parent, name, mode, gid, uid)))
+            .with_txn(move |_, txn| Box::pin(txn.mkdir(parent, name, mode, gid, uid)))
             .await?;
         Ok(Entry::new(attr, 0))
     }
@@ -300,7 +289,7 @@ impl AsyncFileSystem for TiFs {
         _rdev: u32,
     ) -> Result<Entry> {
         let attr = self
-            .with_txn(move |fs, txn| Box::pin(txn.make_inode(fs, parent, name, mode, gid, uid)))
+            .with_txn(move |_, txn| Box::pin(txn.make_inode(parent, name, mode, gid, uid)))
             .await?;
         Ok(Entry::new(attr, 0))
     }
