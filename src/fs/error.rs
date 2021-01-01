@@ -33,6 +33,12 @@ pub enum FsError {
     #[error("cannot find fh({fh})")]
     FhNotFound { fh: u64 },
 
+    #[error("invalid offset({offset}) of ino({ino})")]
+    InvalidOffset { ino: u64, offset: i64 },
+
+    #[error("unknown whence({whence})")]
+    UnknownWhence { whence: i32 },
+
     #[error("cannot find block(<{inode}>[{block}])")]
     BlockNotFound { inode: u64, block: u64 },
 

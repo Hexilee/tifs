@@ -13,7 +13,7 @@ mkdir ~/mnt
 RUST_LOG=debug target/debug/tifs --mount-point ~/mnt
 ```
 
-Then you can open another shell and do play with tifs in `~/mnt`.
+Then you can open another shell and play with tifs in `~/mnt`.
 
 ### Product
 
@@ -37,20 +37,21 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
     - [ ] setattr
     - [ ] readlink
     - [x] readdir
-    - [x] open ?
-    - [x] read ?
-    - [x] write ?
+    - [x] open
+    - [x] release
+    - [x] read
+    - [x] write
     - [x] mkdir
     - [x] rmdir !
     - [x] mknod
-    - [ ] lseek
+    - [x] lseek
     - [ ] unlink
     - [ ] symlink
     - [ ] rename
     - [ ] link
     - [ ] statfs
     - [ ] access
-    - [ ] create
+    - [x] create
     - [ ] fallocate
     - [ ] getlk
     - [ ] setlk 

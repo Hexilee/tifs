@@ -212,7 +212,7 @@ impl Txn {
         let (first_block, mut rest) = data.split_at(first_block_size.min(data.len()));
 
         let mut start_value = if start_index > 0 {
-            self.get(start_key.clone())
+            self.get_for_update(start_key.clone())
                 .await?
                 .ok_or_else(|| FsError::BlockNotFound {
                     inode: ino,
@@ -234,13 +234,12 @@ impl Txn {
             if value.len() != TiFs::BLOCK_SIZE as usize
                 && (block_index * TiFs::BLOCK_SIZE + value.len() as u64) < attr.size
             {
-                let last_value =
-                    self.get(key.clone())
-                        .await?
-                        .ok_or_else(|| FsError::BlockNotFound {
-                            inode: ino,
-                            block: block_index,
-                        })?;
+                let last_value = self.get_for_update(key.clone()).await?.ok_or_else(|| {
+                    FsError::BlockNotFound {
+                        inode: ino,
+                        block: block_index,
+                    }
+                })?;
 
                 value.extend_from_slice(&last_value[value.len()..]);
             }

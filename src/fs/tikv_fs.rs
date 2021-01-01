@@ -6,6 +6,7 @@ use std::pin::Pin;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use fuser::*;
+use libc::{SEEK_CUR, SEEK_END, SEEK_SET};
 use tikv_client::{Config, TransactionClient};
 use tracing::{debug, info, instrument, trace};
 
@@ -298,5 +299,62 @@ impl AsyncFileSystem for TiFs {
             .with_txn(move |_, txn| Box::pin(txn.make_inode(parent, name, mode, gid, uid)))
             .await?;
         Ok(Entry::new(attr, 0))
+    }
+
+    async fn create(
+        &self,
+        uid: u32,
+        gid: u32,
+        parent: u64,
+        name: OsString,
+        mode: u32,
+        umask: u32,
+        flags: i32,
+    ) -> Result<Create> {
+        let entry = self.mknod(parent, name, mode, gid, uid, umask, 0).await?;
+        let open = self.open(entry.stat.ino, flags).await?;
+        Ok(Create::new(
+            entry.stat,
+            entry.generation,
+            open.fh,
+            open.flags,
+        ))
+    }
+
+    async fn lseek(&self, ino: u64, fh: u64, offset: i64, whence: i32) -> Result<Lseek> {
+        let file_handler = self.read_fh(ino, fh).await?;
+        let mut cursor = file_handler.cursor().await;
+        let inode = self.read_inode(ino).await?;
+        let target_cursor = match whence {
+            SEEK_SET => offset,
+            SEEK_CUR => *cursor as i64 + offset,
+            SEEK_END => inode.size as i64 + offset,
+            _ => return Err(FsError::UnknownWhence { whence }),
+        };
+
+        if target_cursor < 0 || target_cursor > inode.size as i64 {
+            return Err(FsError::InvalidOffset {
+                ino: inode.ino,
+                offset: target_cursor,
+            });
+        }
+
+        *cursor = target_cursor as usize;
+        Ok(Lseek::new(target_cursor))
+    }
+
+    async fn release(
+        &self,
+        ino: u64,
+        fh: u64,
+        _flags: i32,
+        _lock_owner: Option<u64>,
+        _flush: bool,
+    ) -> Result<()> {
+        self.hub
+            .close(ino, fh)
+            .await
+            .ok_or_else(|| FsError::FhNotFound { fh })
+            .map(|_| ())
     }
 }
