@@ -49,17 +49,14 @@ impl Txn {
         if parent >= ROOT_INODE {
             let mut dir = self.read_dir(parent).await?;
             debug!("read dir({:?})", &dir);
-            if dir.contains_key(&*name) {
-                return Err(FsError::FileExist {
-                    file: name.to_string(),
-                });
-            }
 
-            dir = dir.add(DirItem {
+            if let Some(item) = dir.add(DirItem {
                 ino,
                 name: name.to_string(),
                 typ: file_type,
-            });
+            }) {
+                return Err(FsError::FileExist { file: item.name });
+            }
 
             self.save_dir(parent, &dir).await?;
             // TODO: update attributes of directory

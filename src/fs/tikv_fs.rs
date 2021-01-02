@@ -357,4 +357,85 @@ impl AsyncFileSystem for TiFs {
             .ok_or_else(|| FsError::FhNotFound { fh })
             .map(|_| ())
     }
+
+    /// Create a hard link.
+    async fn link(&self, ino: u64, newparent: u64, newname: OsString) -> Result<Entry> {
+        self.with_txn(move |_, txn| {
+            Box::pin(async move {
+                let mut attr = txn.read_inode_for_update(ino).await?;
+                let mut dir = txn.read_dir(newparent).await?;
+                let name = newname.to_string_lossy();
+
+                if let Some(item) = dir.add(DirItem {
+                    ino,
+                    name: name.to_string(),
+                    typ: attr.kind,
+                }) {
+                    return Err(FsError::FileExist { file: item.name });
+                }
+
+                txn.save_dir(newparent, &dir).await?;
+                attr.nlink += 1;
+                txn.save_inode(&mut attr.into()).await?;
+                Ok(Entry::new(attr.into(), 0))
+            })
+        })
+        .await
+    }
+
+    async fn unlink(&self, parent: u64, raw_name: OsString) -> Result<()> {
+        self.with_txn(move |_, txn| {
+            Box::pin(async move {
+                let mut dir = txn.read_dir(parent).await?;
+                let name = raw_name.to_string_lossy();
+                let item = dir.remove(&*name).ok_or_else(|| FsError::FileNotFound {
+                    file: name.to_string(),
+                })?;
+
+                txn.save_dir(parent, &dir).await?;
+                let mut attr = txn.read_inode_for_update(item.ino).await?;
+                attr.nlink -= 1;
+                txn.save_inode(&mut attr.into()).await?;
+
+                Ok(())
+            })
+        })
+        .await
+    }
+
+    async fn rename(
+        &self,
+        parent: u64,
+        raw_name: OsString,
+        newparent: u64,
+        new_raw_name: OsString,
+        _flags: u32,
+    ) -> Result<()> {
+        self.with_txn(move |_, txn| {
+            Box::pin(async move {
+                let mut dir = txn.read_dir(parent).await?;
+                let name = raw_name.to_string_lossy();
+
+                match dir.remove(&*name) {
+                    None => Err(FsError::FileNotFound {
+                        file: name.to_string(),
+                    }),
+                    Some(mut item) => {
+                        txn.save_dir(newparent, &dir).await?;
+                        let mut new_dir = txn.read_dir(newparent).await?;
+                        item.name = new_raw_name.to_string_lossy().to_string();
+                        if let Some(old_item) = new_dir.add(item) {
+                            return Err(FsError::FileExist {
+                                file: old_item.name,
+                            });
+                        }
+
+                        txn.save_dir(newparent, &new_dir).await?;
+                        Ok(())
+                    }
+                }
+            })
+        })
+        .await
+    }
 }

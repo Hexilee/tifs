@@ -15,14 +15,15 @@ pub struct Directory(HashMap<String, DirItem>);
 
 impl Directory {
     pub fn new(ino: u64, parent: u64) -> Self {
-        let mut dir = Directory(HashMap::new()).add(DirItem {
+        let mut dir = Directory(HashMap::new());
+        dir.add(DirItem {
             ino: ino,
             name: ".".into(),
             typ: FileType::Directory,
         });
 
         if ino != ROOT_INODE {
-            dir = dir.add(DirItem {
+            dir.add(DirItem {
                 ino: parent,
                 name: "..".into(),
                 typ: FileType::Directory,
@@ -31,9 +32,8 @@ impl Directory {
         dir
     }
 
-    pub fn add(mut self, item: DirItem) -> Self {
-        self.0.insert(item.name.clone(), item);
-        self
+    pub fn add(&mut self, item: DirItem) -> Option<DirItem> {
+        self.0.insert(item.name.clone(), item)
     }
 
     pub fn serialize(&self) -> Result<Vec<u8>> {

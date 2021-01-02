@@ -62,7 +62,7 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
         - [x] next inode
         - [x] nlinks
         - [ ] directory
-        - [ ] start and end block
+        - [x] start and end block
 
 - [ ] Performance
     - [ ] cache
@@ -72,6 +72,7 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
 - [ ] Other
     - [ ] benchmark
     - [ ] real-world usage
+        - [x] vim
         - [ ] git clone
         - [ ] cargo build
         - [ ] npm install
