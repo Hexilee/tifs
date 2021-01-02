@@ -2,7 +2,7 @@ use std::ffi::OsString;
 use std::fmt::{self, Debug};
 use std::future::Future;
 use std::os::unix::ffi::OsStrExt;
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 use std::pin::Pin;
 
 use anyhow::anyhow;
@@ -10,14 +10,14 @@ use async_trait::async_trait;
 use fuser::*;
 use libc::{SEEK_CUR, SEEK_END, SEEK_SET};
 use tikv_client::{Config, TransactionClient};
-use tracing::{debug, info, instrument, trace};
+use tracing::{debug, info, instrument};
 
 use super::async_fs::AsyncFileSystem;
 use super::dir::Directory;
 use super::error::{FsError, Result};
 use super::file_handler::{FileHandler, FileHub};
 use super::key::ROOT_INODE;
-use super::mode::{as_file_perm, make_mode};
+use super::mode::{make_mode};
 use super::reply::*;
 use super::transaction::Txn;
 

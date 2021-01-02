@@ -9,11 +9,17 @@ use std::{
 
 use async_std::task::{block_on, spawn};
 use async_trait::async_trait;
-use fuser::*;
+use fuser::{
+    Filesystem, KernelConfig, ReplyAttr, ReplyBmap, ReplyCreate, ReplyData, ReplyDirectory,
+    ReplyDirectoryPlus, ReplyEmpty, ReplyEntry, ReplyLock, ReplyLseek, ReplyOpen, ReplyStatfs,
+    ReplyWrite, ReplyXattr, Request, TimeOrNow,
+};
 use tracing::trace;
 
 use super::error::{FsError, Result};
-use super::reply::*;
+use super::reply::{
+    Attr, Bmap, Create, Data, Dir, DirPlus, Entry, FsReply, Lock, Lseek, Open, StatFs, Write, Xattr,
+};
 
 pub fn spawn_reply<F, R, V>(id: u64, reply: R, f: F)
 where
