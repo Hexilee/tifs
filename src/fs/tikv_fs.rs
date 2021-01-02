@@ -4,6 +4,7 @@ use std::future::Future;
 use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::time::SystemTime;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -19,6 +20,7 @@ use super::file_handler::{FileHandler, FileHub};
 use super::key::ROOT_INODE;
 use super::mode::make_mode;
 use super::reply::*;
+use super::reply::get_time;
 use super::transaction::Txn;
 
 pub struct TiFs {
@@ -174,6 +176,35 @@ impl AsyncFileSystem for TiFs {
     #[tracing::instrument]
     async fn getattr(&self, ino: u64) -> Result<Attr> {
         Ok(Attr::new(self.read_inode(ino).await?))
+    }
+
+    #[tracing::instrument]
+    async fn setattr(
+        &self,
+        ino: u64,
+        mode: Option<u32>,
+        uid: Option<u32>,
+        gid: Option<u32>,
+        size: Option<u64>,
+        atime: Option<TimeOrNow>,
+        mtime: Option<TimeOrNow>,
+        ctime: Option<SystemTime>,
+        fh: Option<u64>,
+        crtime: Option<SystemTime>,
+        chgtime: Option<SystemTime>,
+        bkuptime: Option<SystemTime>,
+        flags: Option<u32>,
+    ) -> Result<Attr> {
+        let mut attr = self.read_inode(ino).await?;
+        match uid {
+            Some(uid_) => attr.uid = uid_,
+            _ => ()
+        }
+        match gid {
+            Some(gid_) => attr.gid = gid_,
+            _ => ()
+        }
+        Ok(Attr{time: get_time(), attr})
     }
 
     #[tracing::instrument]

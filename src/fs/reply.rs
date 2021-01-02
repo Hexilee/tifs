@@ -7,7 +7,7 @@ use tracing::{debug, error, trace};
 
 use super::error::Result;
 
-fn get_time() -> Duration {
+pub fn get_time() -> Duration {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap()
 }
 
