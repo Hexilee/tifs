@@ -1,6 +1,8 @@
 use std::ffi::OsString;
 use std::fmt::{self, Debug};
 use std::future::Future;
+use std::os::unix::ffi::OsStrExt;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 
 use anyhow::anyhow;
@@ -108,6 +110,7 @@ impl TiFs {
     async fn read_inode(&self, ino: u64) -> Result<FileAttr> {
         self.with_txn(move |_, txn| Box::pin(txn.read_inode(ino)))
             .await
+            .map(Into::into)
     }
 
     async fn lookup_file(&self, parent: u64, name: OsString) -> Result<DirItem> {
@@ -250,7 +253,7 @@ impl AsyncFileSystem for TiFs {
         let attr = self
             .with_txn(move |_, txn| Box::pin(txn.mkdir(parent, name, mode, gid, uid)))
             .await?;
-        Ok(Entry::new(attr, 0))
+        Ok(Entry::new(attr.into(), 0))
     }
 
     #[tracing::instrument]
@@ -298,7 +301,7 @@ impl AsyncFileSystem for TiFs {
         let attr = self
             .with_txn(move |_, txn| Box::pin(txn.make_inode(parent, name, mode, gid, uid)))
             .await?;
-        Ok(Entry::new(attr, 0))
+        Ok(Entry::new(attr.into(), 0))
     }
 
     async fn create(
@@ -435,6 +438,38 @@ impl AsyncFileSystem for TiFs {
                     }
                 }
             })
+        })
+        .await
+    }
+
+    async fn symlink(
+        &self,
+        gid: u32,
+        uid: u32,
+        parent: u64,
+        name: OsString,
+        link: PathBuf,
+    ) -> Result<Entry> {
+        self.with_txn(move |_, txn| {
+            Box::pin(async move {
+                let mut attr = txn
+                    .make_inode(parent, name, make_mode(FileType::Symlink, 0o777), gid, uid)
+                    .await?;
+
+                attr.size = txn
+                    .write_data(attr.ino, 0, link.as_os_str().as_bytes().to_vec())
+                    .await? as u64;
+
+                txn.save_inode(&mut attr).await?;
+                Ok(Entry::new(attr.into(), 0))
+            })
+        })
+        .await
+    }
+
+    async fn readlink(&self, ino: u64) -> Result<Data> {
+        self.with_txn(move |_, txn| {
+            Box::pin(async move { Ok(Data::new(txn.read_data(ino, 0, None).await?)) })
         })
         .await
     }

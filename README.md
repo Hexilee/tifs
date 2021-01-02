@@ -35,7 +35,7 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
     - [x] lookup
     - [x] getattr
     - [ ] setattr
-    - [ ] readlink
+    - [x] readlink !
     - [x] readdir
     - [x] open
     - [x] release
@@ -46,7 +46,7 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
     - [x] mknod
     - [x] lseek
     - [x] unlink
-    - [ ] symlink
+    - [x] symlink
     - [x] rename
     - [x] link
     - [ ] statfs
@@ -73,7 +73,7 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
     - [ ] benchmark
     - [ ] real-world usage
         - [x] vim
-        - [ ] git clone
+        - [ ] git init
         - [ ] cargo build
         - [ ] npm install
         - [ ] sqlite

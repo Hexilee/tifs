@@ -33,7 +33,7 @@ impl Txn {
         mode: u32,
         gid: u32,
         uid: u32,
-    ) -> Result<FileAttr> {
+    ) -> Result<Inode> {
         let mut meta = self.read_meta_for_update().await?.unwrap_or_else(|| Meta {
             inode_next: ROOT_INODE,
         });
@@ -87,20 +87,20 @@ impl Txn {
         Ok(inode.into())
     }
 
-    pub async fn read_inode(&self, ino: u64) -> Result<FileAttr> {
+    pub async fn read_inode(&self, ino: u64) -> Result<Inode> {
         let value = self
             .get(ScopedKey::inode(ino).scoped())
             .await?
             .ok_or_else(|| FsError::InodeNotFound { inode: ino })?;
-        Ok(Inode::deserialize(&value)?.0)
+        Ok(Inode::deserialize(&value)?)
     }
 
-    pub async fn read_inode_for_update(&mut self, ino: u64) -> Result<FileAttr> {
+    pub async fn read_inode_for_update(&mut self, ino: u64) -> Result<Inode> {
         let value = self
             .get_for_update(ScopedKey::inode(ino).scoped())
             .await?
             .ok_or_else(|| FsError::InodeNotFound { inode: ino })?;
-        Ok(Inode::deserialize(&value)?.0)
+        Ok(Inode::deserialize(&value)?)
     }
 
     pub async fn save_inode(&mut self, inode: &mut Inode) -> Result<()> {
@@ -258,7 +258,7 @@ impl Txn {
         mode: u32,
         gid: u32,
         uid: u32,
-    ) -> Result<FileAttr> {
+    ) -> Result<Inode> {
         let dir_mode = make_mode(FileType::Directory, as_file_perm(mode));
         let attr = self.make_inode(parent, name, dir_mode, gid, uid).await?;
         let dir = Directory::new(attr.ino, parent);

@@ -124,7 +124,14 @@ pub trait AsyncFileSystem: Send + Sync {
     }
 
     /// Create a symbolic link.
-    async fn symlink(&self, _parent: u64, _name: OsString, _link: PathBuf) -> Result<Entry> {
+    async fn symlink(
+        &self,
+        _gid: u32,
+        _uid: u32,
+        _parent: u64,
+        _name: OsString,
+        _link: PathBuf,
+    ) -> Result<Entry> {
         Err(FsError::unimplemented())
     }
 
@@ -593,8 +600,11 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
         let async_impl = self.0.clone();
         let name = name.to_owned();
         let link = link.to_owned();
+        let uid = req.uid();
+        let gid = req.gid();
+
         spawn_reply(req.unique(), reply, async move {
-            async_impl.symlink(parent, name, link).await
+            async_impl.symlink(gid, uid, parent, name, link).await
         });
     }
 

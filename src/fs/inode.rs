@@ -1,5 +1,6 @@
 use fuser::FileAttr;
 use serde::{Deserialize, Serialize};
+use std::ops::{Deref, DerefMut};
 
 use super::error::{FsError, Result};
 use super::serialize::{deserialize, serialize, ENCODING};
@@ -34,5 +35,19 @@ impl From<FileAttr> for Inode {
 impl From<Inode> for FileAttr {
     fn from(inode: Inode) -> Self {
         inode.0
+    }
+}
+
+impl Deref for Inode {
+    type Target = FileAttr;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Inode {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
