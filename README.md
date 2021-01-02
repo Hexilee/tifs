@@ -45,10 +45,10 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
     - [x] rmdir !
     - [x] mknod
     - [x] lseek
-    - [ ] unlink
+    - [x] unlink
     - [ ] symlink
-    - [ ] rename
-    - [ ] link
+    - [x] rename
+    - [x] link
     - [ ] statfs
     - [ ] access
     - [x] create
