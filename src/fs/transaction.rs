@@ -4,7 +4,7 @@ use std::time::SystemTime;
 
 use fuser::{FileAttr, FileType};
 use tikv_client::{Transaction, TransactionClient};
-use tracing::debug;
+use tracing::{debug, instrument};
 
 use super::dir::Directory;
 use super::error::{FsError, Result};
@@ -196,6 +196,7 @@ impl Txn {
     }
 
     pub async fn write_data(&mut self, ino: u64, start: u64, data: Vec<u8>) -> Result<usize> {
+        debug!("write data at ({})[{}]", ino, start);
         let mut attr = self.read_inode(ino).await?;
         let size = data.len();
         let target = start + size as u64;
