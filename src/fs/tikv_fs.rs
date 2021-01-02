@@ -2,7 +2,7 @@ use std::ffi::OsString;
 use std::fmt::{self, Debug};
 use std::future::Future;
 use std::os::unix::ffi::OsStrExt;
-use std::path::{PathBuf};
+use std::path::PathBuf;
 use std::pin::Pin;
 
 use anyhow::anyhow;
@@ -17,7 +17,7 @@ use super::dir::Directory;
 use super::error::{FsError, Result};
 use super::file_handler::{FileHandler, FileHub};
 use super::key::ROOT_INODE;
-use super::mode::{make_mode};
+use super::mode::make_mode;
 use super::reply::*;
 use super::transaction::Txn;
 
@@ -472,5 +472,18 @@ impl AsyncFileSystem for TiFs {
             Box::pin(async move { Ok(Data::new(txn.read_data(ino, 0, None).await?)) })
         })
         .await
+    }
+
+    async fn fallocate(
+        &self,
+        ino: u64,
+        fh: u64,
+        offset: i64,
+        length: i64,
+        _mode: i32,
+    ) -> Result<()> {
+        let data = vec![0u8; length as usize];
+        self.write(ino, fh, offset, data, 0, 0, None).await?;
+        Ok(())
     }
 }

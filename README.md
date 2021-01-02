@@ -52,7 +52,7 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
     - [ ] statfs
     - [ ] access
     - [x] create
-    - [ ] fallocate
+    - [x] fallocate
     - [ ] getlk
     - [ ] setlk 
     - [ ] copy_file_range
