@@ -35,7 +35,6 @@ async fn main() {
         .get_matches();
 
     tracing_subscriber::fmt()
-        // .with_max_level(log_level)
         .with_env_filter(EnvFilter::from_default_env())
         .try_init()
         .unwrap();

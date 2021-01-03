@@ -19,8 +19,8 @@ use super::error::{FsError, Result};
 use super::file_handler::{FileHandler, FileHub};
 use super::key::ROOT_INODE;
 use super::mode::make_mode;
-use super::reply::*;
 use super::reply::get_time;
+use super::reply::{Attr, Create, Data, Dir, DirItem, Entry, Lseek, Open, Write};
 use super::transaction::Txn;
 
 pub struct TiFs {
@@ -200,43 +200,47 @@ impl AsyncFileSystem for TiFs {
                 let mut attr = txn.read_inode_for_update(ino).await?;
                 match uid {
                     Some(uid_) => attr.uid = uid_,
-                    _ => ()
+                    _ => (),
                 }
                 match gid {
                     Some(gid_) => attr.gid = gid_,
-                    _ => ()
+                    _ => (),
                 }
                 // TODO: how to deal with size, fh, chgtime, bkuptime?
                 match atime {
                     Some(atime_) => match atime_ {
                         TimeOrNow::SpecificTime(t) => attr.atime = t,
-                        TimeOrNow::Now => attr.atime = SystemTime::now()
+                        TimeOrNow::Now => attr.atime = SystemTime::now(),
                     },
-                    _ => attr.atime = SystemTime::now()
+                    _ => attr.atime = SystemTime::now(),
                 }
                 match mtime {
                     Some(mtime_) => match mtime_ {
                         TimeOrNow::SpecificTime(t) => attr.mtime = t,
-                        TimeOrNow::Now => attr.mtime = SystemTime::now()
+                        TimeOrNow::Now => attr.mtime = SystemTime::now(),
                     },
-                    _ => attr.mtime = SystemTime::now()
+                    _ => attr.mtime = SystemTime::now(),
                 }
                 match ctime {
                     Some(t) => attr.ctime = t,
-                    _ => ()
+                    _ => (),
                 }
                 match crtime {
                     Some(t) => attr.crtime = t,
-                    _ => ()
+                    _ => (),
                 }
                 match flags {
                     Some(f) => attr.flags = f,
-                    _ => ()
+                    _ => (),
                 }
                 txn.save_inode(&mut attr).await?;
-                Ok(Attr{time: get_time(), attr: attr.into()})
+                Ok(Attr {
+                    time: get_time(),
+                    attr: attr.into(),
+                })
             })
-        }).await
+        })
+        .await
     }
 
     #[tracing::instrument]
