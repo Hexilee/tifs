@@ -200,6 +200,10 @@ impl AsyncFileSystem for TiFs {
             Box::pin(async move {
                 // TODO: how to deal with fh, chgtime, bkuptime?
                 let mut attr = txn.read_inode_for_update(ino).await?;
+                attr.perm = match mode {
+                    Some(m) => as_file_perm(m),
+                    None => attr.perm,
+                };
                 attr.uid = uid.unwrap_or(attr.uid);
                 attr.gid = gid.unwrap_or(attr.gid);
                 attr.size = size.unwrap_or(attr.size);
