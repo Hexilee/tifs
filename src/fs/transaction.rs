@@ -109,7 +109,6 @@ impl Txn {
         if inode.0.nlink == 0 {
             self.delete(key).await?;
         } else {
-            inode.0.mtime = SystemTime::now();
             self.put(key, inode.serialize()?).await?;
             debug!("save inode: {:?}", inode);
         }
@@ -246,6 +245,8 @@ impl Txn {
         }
 
         attr.atime = SystemTime::now();
+        attr.mtime = SystemTime::now();
+        attr.ctime = SystemTime::now();
         attr.size = attr.size.max(target);
         self.save_inode(&mut attr.into()).await?;
         debug!("write data: {}", String::from_utf8_lossy(&data));
@@ -278,6 +279,9 @@ impl Txn {
         let mut attr = self.read_inode(ino).await?;
         attr.size = size;
         attr.blocks = (size + TiFs::BLOCK_SIZE - 1) / TiFs::BLOCK_SIZE;
+        attr.atime = SystemTime::now();
+        attr.mtime = SystemTime::now();
+        attr.ctime = SystemTime::now();
         self.save_inode(&mut attr.into()).await?;
         Ok(())
     }
