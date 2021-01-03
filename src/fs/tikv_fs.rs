@@ -197,7 +197,7 @@ impl AsyncFileSystem for TiFs {
     ) -> Result<Attr> {
         self.with_txn(move |_, txn| {
             Box::pin(async move {
-                // TODO: how to deal with, fh, chgtime, bkuptime?
+                // TODO: how to deal with fh, chgtime, bkuptime?
                 let mut attr = txn.read_inode_for_update(ino).await?;
                 attr.uid = uid.unwrap_or(attr.uid);
                 attr.gid = gid.unwrap_or(attr.gid);
