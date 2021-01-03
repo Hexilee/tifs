@@ -34,7 +34,7 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
     - [x] init
     - [x] lookup
     - [x] getattr
-    - [ ] setattr
+    - [x] setattr ?
     - [x] readlink !
     - [x] readdir
     - [x] open
