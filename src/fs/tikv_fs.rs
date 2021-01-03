@@ -18,7 +18,7 @@ use super::dir::Directory;
 use super::error::{FsError, Result};
 use super::file_handler::{FileHandler, FileHub};
 use super::key::ROOT_INODE;
-use super::mode::{make_mode, as_file_perm};
+use super::mode::{as_file_perm, make_mode};
 use super::reply::get_time;
 use super::reply::{Attr, Create, Data, Dir, DirItem, Entry, Lseek, Open, Write, StatFs};
 use super::transaction::Txn;
@@ -198,42 +198,22 @@ impl AsyncFileSystem for TiFs {
     ) -> Result<Attr> {
         self.with_txn(move |_, txn| {
             Box::pin(async move {
+                // TODO: how to deal with fh, chgtime, bkuptime?
                 let mut attr = txn.read_inode_for_update(ino).await?;
-                match uid {
-                    Some(uid_) => attr.uid = uid_,
-                    _ => (),
-                }
-                match gid {
-                    Some(gid_) => attr.gid = gid_,
-                    _ => (),
-                }
-                // TODO: how to deal with size, fh, chgtime, bkuptime?
-                match atime {
-                    Some(atime_) => match atime_ {
-                        TimeOrNow::SpecificTime(t) => attr.atime = t,
-                        TimeOrNow::Now => attr.atime = SystemTime::now(),
-                    },
-                    _ => attr.atime = SystemTime::now(),
-                }
-                match mtime {
-                    Some(mtime_) => match mtime_ {
-                        TimeOrNow::SpecificTime(t) => attr.mtime = t,
-                        TimeOrNow::Now => attr.mtime = SystemTime::now(),
-                    },
-                    _ => attr.mtime = SystemTime::now(),
-                }
-                match ctime {
-                    Some(t) => attr.ctime = t,
-                    _ => (),
-                }
-                match crtime {
-                    Some(t) => attr.crtime = t,
-                    _ => (),
-                }
-                match flags {
-                    Some(f) => attr.flags = f,
-                    _ => (),
-                }
+                attr.uid = uid.unwrap_or(attr.uid);
+                attr.gid = gid.unwrap_or(attr.gid);
+                attr.size = size.unwrap_or(attr.size);
+                attr.atime = match atime {
+                    Some(TimeOrNow::SpecificTime(t)) => t,
+                    Some(TimeOrNow::Now) | None => SystemTime::now(),
+                };
+                attr.mtime = match mtime {
+                    Some(TimeOrNow::SpecificTime(t)) => t,
+                    Some(TimeOrNow::Now) | None => SystemTime::now(),
+                };
+                attr.ctime = ctime.unwrap_or(attr.ctime);
+                attr.crtime = crtime.unwrap_or(attr.crtime);
+                attr.flags = flags.unwrap_or(attr.flags);
                 txn.save_inode(&mut attr).await?;
                 Ok(Attr {
                     time: get_time(),
@@ -328,7 +308,7 @@ impl AsyncFileSystem for TiFs {
     async fn rmdir(&self, parent: u64, raw_name: OsString) -> Result<()> {
         self.with_txn(move |_, txn| {
             Box::pin(async move {
-                let mut dir = txn.read_dir(parent).await?;
+                let mut dir = txn.read_dir_for_update(parent).await?;
                 let name = raw_name.to_string_lossy();
                 let item = dir.remove(&*name).ok_or_else(|| FsError::FileNotFound {
                     file: name.to_string(),
@@ -345,10 +325,7 @@ impl AsyncFileSystem for TiFs {
                 }
 
                 txn.save_dir(parent, &dir).await?;
-                let mut attr = txn.read_inode_for_update(item.ino).await?;
-                attr.nlink -= 1;
-                txn.save_inode(&mut attr.into()).await?;
-
+                txn.remove_inode(item.ino).await?;
                 Ok(())
             })
         })
@@ -409,7 +386,7 @@ impl AsyncFileSystem for TiFs {
             _ => return Err(FsError::UnknownWhence { whence }),
         };
 
-        if target_cursor < 0 || target_cursor > inode.size as i64 {
+        if target_cursor < 0 {
             return Err(FsError::InvalidOffset {
                 ino: inode.ino,
                 offset: target_cursor,
@@ -463,7 +440,7 @@ impl AsyncFileSystem for TiFs {
     async fn unlink(&self, parent: u64, raw_name: OsString) -> Result<()> {
         self.with_txn(move |_, txn| {
             Box::pin(async move {
-                let mut dir = txn.read_dir(parent).await?;
+                let mut dir = txn.read_dir_for_update(parent).await?;
                 let name = raw_name.to_string_lossy();
                 let item = dir.remove(&*name).ok_or_else(|| FsError::FileNotFound {
                     file: name.to_string(),
@@ -490,7 +467,7 @@ impl AsyncFileSystem for TiFs {
     ) -> Result<()> {
         self.with_txn(move |_, txn| {
             Box::pin(async move {
-                let mut dir = txn.read_dir(parent).await?;
+                let mut dir = txn.read_dir_for_update(parent).await?;
                 let name = raw_name.to_string_lossy();
 
                 match dir.remove(&*name) {
@@ -499,7 +476,13 @@ impl AsyncFileSystem for TiFs {
                     }),
                     Some(mut item) => {
                         txn.save_dir(newparent, &dir).await?;
-                        let mut new_dir = txn.read_dir(newparent).await?;
+
+                        let mut new_dir = if parent == newparent {
+                            dir
+                        } else {
+                            txn.read_dir_for_update(newparent).await?
+                        };
+
                         item.name = new_raw_name.to_string_lossy().to_string();
                         if let Some(old_item) = new_dir.add(item) {
                             return Err(FsError::FileExist {
@@ -556,8 +539,15 @@ impl AsyncFileSystem for TiFs {
         length: i64,
         _mode: i32,
     ) -> Result<()> {
-        let data = vec![0u8; length as usize];
-        self.write(ino, fh, offset, data, 0, 0, None).await?;
+        self.with_txn(move |_, txn| {
+            Box::pin(async move {
+                let mut inode = txn.read_inode_for_update(ino).await?;
+                txn.fallocate(&mut inode, offset, length).await
+            })
+        })
+        .await?;
+        let handler = self.read_fh(ino, fh).await?;
+        *handler.cursor().await = (offset + length) as usize;
         Ok(())
     }
 // TODO: Find an api to calculate total and available space on tikv.

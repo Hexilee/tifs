@@ -60,11 +60,11 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
     - [ ] setlk
     - [ ] copy\_file\_range
 
-- [ ] Consistency
-    - [ ] select for update
+- [x] Consistency
+    - [x] select for update
         - [x] next inode
         - [x] nlinks
-        - [ ] directory
+        - [x] directory
         - [x] start and end block
 
 - [ ] Performance
