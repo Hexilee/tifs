@@ -47,7 +47,7 @@ impl Txn {
         let name = raw_name.to_string_lossy();
 
         if parent >= ROOT_INODE {
-            let mut dir = self.read_dir(parent).await?;
+            let mut dir = self.read_dir_for_update(parent).await?;
             debug!("read dir({:?})", &dir);
 
             if let Some(item) = dir.add(DirItem {
@@ -269,20 +269,39 @@ impl Txn {
     }
 
     pub async fn read_dir(&mut self, ino: u64) -> Result<Directory> {
-        let data = self.read_data(ino, 0, None).await?;
+        let data = self
+            .get(ScopedKey::dir(ino))
+            .await?
+            .ok_or_else(|| FsError::BlockNotFound {
+                inode: ino,
+                block: 0,
+            })?;
+        debug!("read data: {}", String::from_utf8_lossy(&data));
+        Directory::deserialize(&data)
+    }
+
+    pub async fn read_dir_for_update(&mut self, ino: u64) -> Result<Directory> {
+        let data = self
+            .get_for_update(ScopedKey::dir(ino))
+            .await?
+            .ok_or_else(|| FsError::BlockNotFound {
+                inode: ino,
+                block: 0,
+            })?;
         debug!("read data: {}", String::from_utf8_lossy(&data));
         Directory::deserialize(&data)
     }
 
     pub async fn save_dir(&mut self, ino: u64, dir: &Directory) -> Result<()> {
-        let size = self.write_data(ino, 0, dir.serialize()?).await? as u64;
+        let data = dir.serialize()?;
         let mut attr = self.read_inode(ino).await?;
-        attr.size = size;
-        attr.blocks = (size + TiFs::BLOCK_SIZE - 1) / TiFs::BLOCK_SIZE;
+        attr.size = data.len() as u64;
+        attr.blocks = 1;
         attr.atime = SystemTime::now();
         attr.mtime = SystemTime::now();
         attr.ctime = SystemTime::now();
-        self.save_inode(&mut attr.into()).await?;
+        self.save_inode(&mut attr).await?;
+        self.put(ScopedKey::dir(ino), data).await?;
         Ok(())
     }
 }

@@ -18,7 +18,7 @@ use super::dir::Directory;
 use super::error::{FsError, Result};
 use super::file_handler::{FileHandler, FileHub};
 use super::key::ROOT_INODE;
-use super::mode::{make_mode, as_file_perm};
+use super::mode::{as_file_perm, make_mode};
 use super::reply::get_time;
 use super::reply::{Attr, Create, Data, Dir, DirItem, Entry, Lseek, Open, Write};
 use super::transaction::Txn;
@@ -327,7 +327,7 @@ impl AsyncFileSystem for TiFs {
     async fn rmdir(&self, parent: u64, raw_name: OsString) -> Result<()> {
         self.with_txn(move |_, txn| {
             Box::pin(async move {
-                let mut dir = txn.read_dir(parent).await?;
+                let mut dir = txn.read_dir_for_update(parent).await?;
                 let name = raw_name.to_string_lossy();
                 let item = dir.remove(&*name).ok_or_else(|| FsError::FileNotFound {
                     file: name.to_string(),
@@ -344,10 +344,7 @@ impl AsyncFileSystem for TiFs {
                 }
 
                 txn.save_dir(parent, &dir).await?;
-                let mut attr = txn.read_inode_for_update(item.ino).await?;
-                attr.nlink -= 1;
-                txn.save_inode(&mut attr.into()).await?;
-
+                txn.remove_inode(item.ino).await?;
                 Ok(())
             })
         })
@@ -462,7 +459,7 @@ impl AsyncFileSystem for TiFs {
     async fn unlink(&self, parent: u64, raw_name: OsString) -> Result<()> {
         self.with_txn(move |_, txn| {
             Box::pin(async move {
-                let mut dir = txn.read_dir(parent).await?;
+                let mut dir = txn.read_dir_for_update(parent).await?;
                 let name = raw_name.to_string_lossy();
                 let item = dir.remove(&*name).ok_or_else(|| FsError::FileNotFound {
                     file: name.to_string(),
@@ -489,7 +486,7 @@ impl AsyncFileSystem for TiFs {
     ) -> Result<()> {
         self.with_txn(move |_, txn| {
             Box::pin(async move {
-                let mut dir = txn.read_dir(parent).await?;
+                let mut dir = txn.read_dir_for_update(parent).await?;
                 let name = raw_name.to_string_lossy();
 
                 match dir.remove(&*name) {
@@ -498,7 +495,13 @@ impl AsyncFileSystem for TiFs {
                     }),
                     Some(mut item) => {
                         txn.save_dir(newparent, &dir).await?;
-                        let mut new_dir = txn.read_dir(newparent).await?;
+
+                        let mut new_dir = if parent == newparent {
+                            dir
+                        } else {
+                            txn.read_dir_for_update(newparent).await?
+                        };
+
                         item.name = new_raw_name.to_string_lossy().to_string();
                         if let Some(old_item) = new_dir.add(item) {
                             return Err(FsError::FileExist {

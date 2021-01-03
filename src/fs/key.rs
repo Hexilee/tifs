@@ -27,6 +27,10 @@ impl ScopedKey {
         Self::new(INODE_SCOPE, inode)
     }
 
+    pub const fn dir(inode: u64) -> Self {
+        Self::new(inode, 0)
+    }
+
     pub const fn root() -> Self {
         Self::inode(ROOT_INODE)
     }
