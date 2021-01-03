@@ -20,7 +20,7 @@ use super::file_handler::{FileHandler, FileHub};
 use super::key::ROOT_INODE;
 use super::mode::{make_mode, as_file_perm};
 use super::reply::get_time;
-use super::reply::{Attr, Create, Data, Dir, DirItem, Entry, Lseek, Open, Write};
+use super::reply::{Attr, Create, Data, Dir, DirItem, Entry, Lseek, Open, Write, StatFs};
 use super::transaction::Txn;
 
 pub struct TiFs {
@@ -41,6 +41,7 @@ impl TiFs {
     pub const BLOCK_CACHE: usize = 1 << 25;
     pub const DIR_CACHE: usize = 1 << 24;
     pub const INODE_CACHE: usize = 1 << 24;
+    pub const MAX_NAME_LEN: u32 = 1 << 8;
 
     #[instrument]
     pub async fn construct<S>(pd_endpoints: Vec<S>, cfg: Config) -> anyhow::Result<Self>
@@ -558,5 +559,15 @@ impl AsyncFileSystem for TiFs {
         let data = vec![0u8; length as usize];
         self.write(ino, fh, offset, data, 0, 0, None).await?;
         Ok(())
+    }
+// TODO: Find an api to calculate total and available space on tikv.
+    async fn statfs(
+        &self,
+        _ino: u64,
+    ) -> Result<(StatFs)> {
+        let bsize = Self::BLOCK_SIZE as u32;
+        let namelen = Self::MAX_NAME_LEN;
+
+        Ok(StatFs::new(0, 0, 0, 0, 0, bsize, namelen, 0))
     }
 }

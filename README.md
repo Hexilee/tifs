@@ -52,7 +52,7 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
     - [x] symlink
     - [x] rename
     - [x] link
-    - [ ] statfs
+    - [x] statfs ???
     - [ ] access
     - [x] create
     - [x] fallocate
