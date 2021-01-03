@@ -1,5 +1,6 @@
-# tifs
-A distributed file system based on tikv
+# TiFS
+
+A distributed file system based on TiKV.
 
 ## Run
 
@@ -15,6 +16,8 @@ RUST_LOG=debug target/debug/tifs --mount-point ~/mnt
 
 Then you can open another shell and play with tifs in `~/mnt`.
 
+Maybe you should enable `user_allow_other` in `/etc/fuse.conf`.
+
 ### Product
 
 ```bash
@@ -24,7 +27,7 @@ RUST_LOG=info target/release/tifs --mount-point ~/mnt
 ```
 
 ## FUSE
-There is little docs about FUSE, refer to [example](https://github.com/cberner/fuser/blob/master/examples/simple.rs) for the meaning of FUSE API. 
+There is little docs about FUSE, refer to [example](https://github.com/cberner/fuser/blob/master/examples/simple.rs) for the meaning of FUSE API.
 
 ## TODO
 
@@ -54,8 +57,8 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
     - [x] create
     - [x] fallocate
     - [ ] getlk
-    - [ ] setlk 
-    - [ ] copy_file_range
+    - [ ] setlk
+    - [ ] copy\_file\_range
 
 - [ ] Consistency
     - [ ] select for update
@@ -69,10 +72,14 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
         - [ ] inode table
         - [ ] directory
 
-- [ ] Other
+- [ ] Testing and Benchmarking
+    - [ ] unit test
     - [ ] benchmark
+
+- [ ] Other
     - [ ] real-world usage
         - [x] vim
+        - [ ] emacs
         - [ ] git init
         - [ ] cargo build
         - [ ] npm install
