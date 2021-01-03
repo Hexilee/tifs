@@ -18,7 +18,7 @@ use super::dir::Directory;
 use super::error::{FsError, Result};
 use super::file_handler::{FileHandler, FileHub};
 use super::key::ROOT_INODE;
-use super::mode::make_mode;
+use super::mode::{make_mode, as_file_perm};
 use super::reply::get_time;
 use super::reply::{Attr, Create, Data, Dir, DirItem, Entry, Lseek, Open, Write};
 use super::transaction::Txn;
@@ -369,6 +369,12 @@ impl AsyncFileSystem for TiFs {
             .with_txn(move |_, txn| Box::pin(txn.make_inode(parent, name, mode, gid, uid)))
             .await?;
         Ok(Entry::new(attr.into(), 0))
+    }
+
+    #[tracing::instrument]
+    async fn access(&self, ino: u64, mask: i32) -> Result<()> {
+        let attr = self.read_inode(ino).await?;
+        Ok(())
     }
 
     async fn create(
