@@ -156,23 +156,33 @@ impl Txn {
                 (end_block - start_block) as u32,
             )
             .await?;
-        let data = pairs.enumerate().fold(
-            Vec::with_capacity(data_size as usize),
-            |mut data, (i, pair)| {
-                let value = pair.into_value();
-                let mut slice = value.as_slice();
-                slice = match i {
-                    0 => &slice[(start_block % TiFs::BLOCK_SIZE) as usize..],
-                    n if (n + 1) * TiFs::BLOCK_SIZE as usize > data_size as usize => {
-                        &slice[..(data_size % TiFs::BLOCK_SIZE) as usize]
-                    }
-                    _ => slice,
-                };
 
-                data.extend(slice);
-                data
-            },
-        );
+        let data = pairs
+            .enumerate()
+            .flat_map(|(i, pair)| {
+                let key: ScopedKey = pair.key().clone().into();
+                let value = pair.into_value();
+                (i..key.key() as usize)
+                    .map(|_| vec![0; TiFs::BLOCK_SIZE as usize])
+                    .chain(vec![value])
+            })
+            .enumerate()
+            .fold(
+                Vec::with_capacity(data_size as usize),
+                |mut data, (i, value)| {
+                    let mut slice = value.as_slice();
+                    slice = match i {
+                        0 => &slice[(start_block % TiFs::BLOCK_SIZE) as usize..],
+                        n if (n + 1) * TiFs::BLOCK_SIZE as usize > data_size as usize => {
+                            &slice[..(data_size % TiFs::BLOCK_SIZE) as usize]
+                        }
+                        _ => slice,
+                    };
+
+                    data.extend(slice);
+                    data
+                },
+            );
 
         attr.atime = SystemTime::now();
         self.save_inode(&mut attr.into()).await?;
@@ -251,6 +261,16 @@ impl Txn {
         self.save_inode(&mut attr.into()).await?;
         debug!("write data: {}", String::from_utf8_lossy(&data));
         Ok(size)
+    }
+
+    pub async fn fallocate(&mut self, inode: &mut Inode, offset: i64, length: i64) -> Result<()> {
+        let target_size = (offset + length) as u64;
+        if target_size > inode.size {
+            inode.size = target_size;
+            inode.mtime = SystemTime::now();
+            self.save_inode(inode).await?;
+        }
+        Ok(())
     }
 
     pub async fn mkdir(

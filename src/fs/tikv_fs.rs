@@ -405,7 +405,7 @@ impl AsyncFileSystem for TiFs {
             _ => return Err(FsError::UnknownWhence { whence }),
         };
 
-        if target_cursor < 0 || target_cursor > inode.size as i64 {
+        if target_cursor < 0 {
             return Err(FsError::InvalidOffset {
                 ino: inode.ino,
                 offset: target_cursor,
@@ -558,8 +558,15 @@ impl AsyncFileSystem for TiFs {
         length: i64,
         _mode: i32,
     ) -> Result<()> {
-        let data = vec![0u8; length as usize];
-        self.write(ino, fh, offset, data, 0, 0, None).await?;
+        self.with_txn(move |_, txn| {
+            Box::pin(async move {
+                let mut inode = txn.read_inode_for_update(ino).await?;
+                txn.fallocate(&mut inode, offset, length).await
+            })
+        })
+        .await?;
+        let handler = self.read_fh(ino, fh).await?;
+        *handler.cursor().await = (offset + length) as usize;
         Ok(())
     }
 }
