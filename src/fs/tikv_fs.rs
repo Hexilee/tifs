@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use fuser::*;
 use libc::{SEEK_CUR, SEEK_END, SEEK_SET};
 use tikv_client::{Config, TransactionClient};
-use tracing::{debug, info, instrument};
+use tracing::{debug, info, instrument, trace};
 
 use super::async_fs::AsyncFileSystem;
 use super::dir::Directory;
@@ -71,7 +71,7 @@ impl TiFs {
         match f(self, &mut txn).await {
             Ok(v) => {
                 txn.commit().await?;
-                debug!("transaction committed");
+                trace!("transaction committed");
                 Ok(v)
             }
             Err(e) => {
