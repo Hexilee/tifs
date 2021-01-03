@@ -197,42 +197,22 @@ impl AsyncFileSystem for TiFs {
     ) -> Result<Attr> {
         self.with_txn(move |_, txn| {
             Box::pin(async move {
+                // TODO: how to deal with, fh, chgtime, bkuptime?
                 let mut attr = txn.read_inode_for_update(ino).await?;
-                match uid {
-                    Some(uid_) => attr.uid = uid_,
-                    _ => (),
-                }
-                match gid {
-                    Some(gid_) => attr.gid = gid_,
-                    _ => (),
-                }
-                // TODO: how to deal with size, fh, chgtime, bkuptime?
-                match atime {
-                    Some(atime_) => match atime_ {
-                        TimeOrNow::SpecificTime(t) => attr.atime = t,
-                        TimeOrNow::Now => attr.atime = SystemTime::now(),
-                    },
-                    _ => attr.atime = SystemTime::now(),
-                }
-                match mtime {
-                    Some(mtime_) => match mtime_ {
-                        TimeOrNow::SpecificTime(t) => attr.mtime = t,
-                        TimeOrNow::Now => attr.mtime = SystemTime::now(),
-                    },
-                    _ => attr.mtime = SystemTime::now(),
-                }
-                match ctime {
-                    Some(t) => attr.ctime = t,
-                    _ => (),
-                }
-                match crtime {
-                    Some(t) => attr.crtime = t,
-                    _ => (),
-                }
-                match flags {
-                    Some(f) => attr.flags = f,
-                    _ => (),
-                }
+                attr.uid = uid.unwrap_or(attr.uid);
+                attr.gid = gid.unwrap_or(attr.gid);
+                attr.size = size.unwrap_or(attr.size);
+                attr.atime = match atime {
+                    Some(TimeOrNow::SpecificTime(t)) => t,
+                    Some(TimeOrNow::Now) | None => SystemTime::now(),
+                };
+                attr.mtime = match mtime {
+                    Some(TimeOrNow::SpecificTime(t)) => t,
+                    Some(TimeOrNow::Now) | None => SystemTime::now(),
+                };
+                attr.ctime = ctime.unwrap_or(attr.ctime);
+                attr.crtime = crtime.unwrap_or(attr.crtime);
+                attr.flags = flags.unwrap_or(attr.flags);
                 txn.save_inode(&mut attr).await?;
                 Ok(Attr {
                     time: get_time(),

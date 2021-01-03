@@ -144,7 +144,7 @@ impl Txn {
     ) -> Result<Vec<u8>> {
         let mut attr = self.read_inode(ino).await?;
         let size = chunk_size.unwrap_or_else(|| attr.size - start);
-        let target = attr.size.min(start + size);
+        let target = start + size;
 
         let data_size = target - start;
         let start_block = start / TiFs::BLOCK_SIZE;
