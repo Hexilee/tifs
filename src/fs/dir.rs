@@ -27,6 +27,12 @@ impl Directory {
                 name: "..".into(),
                 typ: FileType::Directory,
             });
+        } else {
+            dir.add(DirItem {
+                ino: ino,
+                name: "..".into(),
+                typ: FileType::Directory,
+            });
         }
         dir
     }
