@@ -3,7 +3,7 @@ use tracing_subscriber::EnvFilter;
 
 use tifs::MountOption;
 use tifs::mount_tifs_daemonize;
-//use daemonize::Daemonize;
+use tracing::{info, debug, trace};
 
 #[async_std::main]
 async fn main() {
@@ -27,9 +27,28 @@ async fn main() {
         .arg(
             Arg::with_name("options")
                 .value_name("OPTION")
+                .long("option")
                 .short("o")
                 .multiple(true)
                 .help("filesystem mount options")
+        )
+        .arg(
+            Arg::with_name("foreground")
+                .long("foreground")
+                .short("f")
+                .help("foreground operation")
+        )
+        .arg(
+            Arg::with_name("serve")
+                .long("serve")
+                .help("run in server mode (implies --foreground)")
+                .hidden(true)
+        )
+        .arg(
+            Arg::with_name("logfile")
+                .long("log-file")
+                .value_name("LOGFILE")
+                .help("log file in server mode (ignored if --foreground is present)")
         )
         .get_matches();
 
@@ -37,6 +56,14 @@ async fn main() {
         .with_env_filter(EnvFilter::from_default_env())
         .try_init()
         .unwrap();
+
+    let serve = matches.is_present("serve");
+    let foreground = serve || matches.is_present("foreground");
+    let logfile = matches.value_of("logfile").map(|v| {
+        std::fs::canonicalize(v).unwrap().to_str().unwrap().to_owned()
+    });
+
+    trace!("serve={} foreground={}", serve, foreground);
 
     let device = matches
         .value_of("device")
@@ -48,13 +75,114 @@ async fn main() {
         .split(",")
         .collect();
 
-    let mountpoint: String = matches.value_of("mount-point").unwrap().to_string();
+    let mountpoint: String = std::fs::canonicalize(
+        matches.value_of("mount-point").unwrap().to_string()
+    ).unwrap().to_str().unwrap().to_owned();
+
     let options = MountOption::to_vec(matches
         .values_of("options")
         .unwrap_or_default());
 
-    mount_tifs_daemonize(mountpoint, endpoints, options, || {
-//        Daemonize::new().working_directory("/").start()?;
+    let runtime_config_string = format!("mountpoint={:?} endpoints={:?} opt={:?}", mountpoint, endpoints, options);
+
+    if ! foreground {
+        use std::process::{Command, Stdio};
+        use std::io::{Read, Write};
+
+        let exe = std::env::current_exe().unwrap().to_str().unwrap().to_owned();
+        debug!("Launching server, current_exe={}", exe);
+        info!("{}", runtime_config_string);
+
+        let mut args = vec!["--serve".to_owned(), format!("tifs:{}", endpoints.join(",")), mountpoint];
+        if options.len() > 0 {
+            args.push("-o".to_owned());
+            args.push(options.iter().map(|v| v.into()).collect::<Vec<String>>().join(","));
+        }
+        if let Some(f) = logfile {
+            args.push("--log-file".to_owned());
+            args.push(f);
+        }
+        let child = Command::new(exe)
+            .args(args)
+            .current_dir("/")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+
+        if let Some(mut stdout) = child.stdout {
+            let mut my_stdout = std::io::stdout();
+            let mut buffer: [u8; 256] = [0; 256];
+            while let Ok(size) = stdout.read(&mut buffer) {
+                if size == 0 {
+                    break; // EOF
+                }
+                my_stdout.write_all(&buffer[0..size]).unwrap();
+            }
+        }
+        if let Some(mut stderr) = child.stderr {
+            let mut my_stderr = std::io::stderr();
+            let mut buffer: [u8; 256] = [0; 256];
+            while let Ok(size) = stderr.read(&mut buffer) {
+                if size == 0 {
+                    break; // EOF
+                }
+                my_stderr.write_all(&buffer[0..size]).unwrap();
+            }
+        }
+        return;
+    }
+
+    mount_tifs_daemonize(mountpoint, endpoints, options, move || {
+        if serve {
+            use libc;
+            use anyhow::bail;
+            use std::io::Error;
+            use std::ffi::CString;
+            use std::io::Write;
+
+            debug!("Using log file: {:?}", logfile);
+
+            std::io::stdout().flush()?;
+            std::io::stderr().flush()?;
+
+            let mut logfd = None;
+            if let Some(f) = logfile {
+                let log_file_name = CString::new(f)?;
+                unsafe {
+                    let fd = libc::open(log_file_name.as_ptr(), libc::O_WRONLY | libc::O_APPEND, 0);
+                    if fd == -1 {
+                        bail!(Error::last_os_error());
+                    }
+                    logfd = Some(fd);
+
+                    libc::dup2(fd, 1);
+                    libc::dup2(fd, 2);
+                    if fd > 2 {
+                        libc::close(fd);
+                    }
+                }
+                debug!("output redirected");
+            }
+
+            let null_file_name = CString::new("/dev/null")?;
+
+            unsafe {
+                let nullfd = libc::open(null_file_name.as_ptr(), libc::O_RDWR, 0);
+                if nullfd != -1 {
+                    libc::dup2(nullfd, 0);
+                    if logfd.is_none() {
+                        libc::dup2(nullfd, 1);
+                        libc::dup2(nullfd, 2);
+                    }
+                    if nullfd > 2 {
+                        libc::close(nullfd);
+                    }
+                }
+            }
+        }
+        debug!("{}", runtime_config_string);
 
         Ok(())
     }).await.unwrap();

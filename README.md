@@ -26,6 +26,15 @@ mkdir ~/mnt
 RUST_LOG=info target/release/tifs --mount-point ~/mnt
 ```
 
+### Installation
+
+```bash
+cargo build --features "binc" --no-default-features --release
+sudo install target/release/mount /sbin/mount.tifs
+mkdir ~/mnt
+mount -t tifs tifs:127.0.0.1:2379 ~/mnt
+```
+
 ## FUSE
 There is little docs about FUSE, refer to [example](https://github.com/cberner/fuser/blob/master/examples/simple.rs) for the meaning of FUSE API.
 

@@ -49,6 +49,15 @@ macro_rules! define_options {
                     }
                 }
             }
+            impl From<&$name> for String {
+                fn from(v: &$name) -> Self {
+                    match v {
+                        $($name::$opt => stringify!([<$opt:lower>]),)*
+                        $($name::$newopt => stringify!([<$newopt:lower>]),)*
+                        $name::Unknown(v) => v,
+                    }.to_owned()
+                }
+            }
         }
     };
 }
