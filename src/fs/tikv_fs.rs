@@ -20,7 +20,7 @@ use super::file_handler::{FileHandler, FileHub};
 use super::key::ROOT_INODE;
 use super::mode::{as_file_perm, make_mode};
 use super::reply::get_time;
-use super::reply::{Attr, Create, Data, Dir, DirItem, Entry, Lseek, Open, Write, StatFs};
+use super::reply::{Attr, Create, Data, Dir, DirItem, Entry, Lseek, Open, StatFs, Write};
 use super::transaction::Txn;
 
 pub struct TiFs {
@@ -554,11 +554,8 @@ impl AsyncFileSystem for TiFs {
         *handler.cursor().await = (offset + length) as usize;
         Ok(())
     }
-// TODO: Find an api to calculate total and available space on tikv.
-    async fn statfs(
-        &self,
-        _ino: u64,
-    ) -> Result<(StatFs)> {
+    // TODO: Find an api to calculate total and available space on tikv.
+    async fn statfs(&self, _ino: u64) -> Result<StatFs> {
         let bsize = Self::BLOCK_SIZE as u32;
         let namelen = Self::MAX_NAME_LEN;
 

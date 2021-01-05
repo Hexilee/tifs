@@ -1,8 +1,8 @@
 use clap::{crate_version, App, Arg};
 use tracing_subscriber::EnvFilter;
 
-use tifs::MountOption;
 use tifs::mount_tifs;
+use tifs::MountOption;
 
 #[async_std::main]
 async fn main() {
@@ -31,7 +31,7 @@ async fn main() {
                 .value_name("OPTION")
                 .long("option")
                 .multiple(true)
-                .help("filesystem mount options")
+                .help("filesystem mount options"),
         )
         .get_matches();
 
@@ -47,9 +47,7 @@ async fn main() {
         .collect();
 
     let mountpoint: String = matches.value_of("mount-point").unwrap().to_string();
-    let options = MountOption::to_vec(matches
-        .values_of("options")
-        .unwrap_or_default());
+    let options = MountOption::to_vec(matches.values_of("options").unwrap_or_default());
 
     mount_tifs(mountpoint, endpoints, options).await.unwrap();
 }

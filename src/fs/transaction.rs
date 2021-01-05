@@ -157,7 +157,9 @@ impl Txn {
             )
             .await?;
 
-        let data = pairs
+        let is_last_block = |index| (index as u64 + 1) * TiFs::BLOCK_SIZE > data_size;
+
+        let mut data = pairs
             .enumerate()
             .flat_map(|(i, pair)| {
                 let key: ScopedKey = pair.key().clone().into();
@@ -169,20 +171,25 @@ impl Txn {
             .enumerate()
             .fold(
                 Vec::with_capacity(data_size as usize),
-                |mut data, (i, value)| {
-                    let mut slice = value.as_slice();
-                    slice = match i {
-                        0 => &slice[(start_block % TiFs::BLOCK_SIZE) as usize..],
-                        n if (n + 1) * TiFs::BLOCK_SIZE as usize > data_size as usize => {
-                            &slice[..(data_size % TiFs::BLOCK_SIZE) as usize]
-                        }
-                        _ => slice,
+                |mut data, (i, mut value)| {
+                    if !is_last_block(i) && value.len() < TiFs::BLOCK_SIZE as usize {
+                        value.resize(TiFs::BLOCK_SIZE as usize, 0);
+                    }
+
+                    let slice = match i {
+                        0 => &value[(start_block % TiFs::BLOCK_SIZE) as usize..],
+                        n if is_last_block(n) => &value[..(data_size % TiFs::BLOCK_SIZE) as usize],
+                        _ => value.as_slice(),
                     };
 
-                    data.extend(slice);
+                    data.extend_from_slice(slice);
                     data
                 },
             );
+
+        if data.len() < size as usize {
+            data.resize(size as usize, 0);
+        }
 
         attr.atime = SystemTime::now();
         self.save_inode(&mut attr.into()).await?;

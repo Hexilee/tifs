@@ -6,8 +6,8 @@ mod fs;
 use fs::async_fs::AsyncFs;
 use fs::tikv_fs::TiFs;
 
-use paste::paste;
 use fuser::MountOption as FuseMountOption;
+use paste::paste;
 
 macro_rules! define_options {
     { $name: ident, [ $($newopt: ident),* $(,)? ], [ $($opt: ident),* $(,)? ] } =>
@@ -62,7 +62,7 @@ macro_rules! define_options {
     };
 }
 
-define_options!{ MountOption, [], [
+define_options! { MountOption, [], [
     Dev,
     NoDev,
     Suid,
@@ -74,10 +74,14 @@ define_options!{ MountOption, [], [
     DirSync,
 ] }
 
-
-pub async fn mount_tifs_daemonize<F>(mountpoint: String, endpoints: Vec<&str>, options: Vec<MountOption>, make_daemon: F) -> anyhow::Result<()>
+pub async fn mount_tifs_daemonize<F>(
+    mountpoint: String,
+    endpoints: Vec<&str>,
+    options: Vec<MountOption>,
+    make_daemon: F,
+) -> anyhow::Result<()>
 where
-    F: FnOnce() -> anyhow::Result<()>
+    F: FnOnce() -> anyhow::Result<()>,
 {
     let mut fuse_options = vec![
         FuseMountOption::FSName(format!("tifs:{}", endpoints.join(","))),
@@ -88,8 +92,7 @@ where
 
     fuse_options.extend(MountOption::to_builtin(options.iter()));
 
-    let fs_impl = TiFs::construct(endpoints, Default::default())
-        .await?;
+    let fs_impl = TiFs::construct(endpoints, Default::default()).await?;
 
     make_daemon()?;
 
@@ -98,6 +101,10 @@ where
     Ok(())
 }
 
-pub async fn mount_tifs(mountpoint: String, endpoints: Vec<&str>, options: Vec<MountOption>) -> anyhow::Result<()> {
-    mount_tifs_daemonize(mountpoint, endpoints, options, || {Ok(())}).await
+pub async fn mount_tifs(
+    mountpoint: String,
+    endpoints: Vec<&str>,
+    options: Vec<MountOption>,
+) -> anyhow::Result<()> {
+    mount_tifs_daemonize(mountpoint, endpoints, options, || Ok(())).await
 }

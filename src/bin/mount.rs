@@ -1,9 +1,9 @@
 use clap::{crate_version, App, Arg};
 use tracing_subscriber::EnvFilter;
 
-use tifs::MountOption;
 use tifs::mount_tifs_daemonize;
-use tracing::{info, debug, trace};
+use tifs::MountOption;
+use tracing::{debug, info, trace};
 
 #[async_std::main]
 async fn main() {
@@ -60,14 +60,16 @@ async fn main() {
     let serve = matches.is_present("serve");
     let foreground = serve || matches.is_present("foreground");
     let logfile = matches.value_of("logfile").map(|v| {
-        std::fs::canonicalize(v).unwrap().to_str().unwrap().to_owned()
+        std::fs::canonicalize(v)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_owned()
     });
 
     trace!("serve={} foreground={}", serve, foreground);
 
-    let device = matches
-        .value_of("device")
-        .unwrap_or_default();
+    let device = matches.value_of("device").unwrap_or_default();
 
     let endpoints: Vec<&str> = device
         .strip_prefix("tifs:")
@@ -75,28 +77,46 @@ async fn main() {
         .split(",")
         .collect();
 
-    let mountpoint: String = std::fs::canonicalize(
-        matches.value_of("mount-point").unwrap().to_string()
-    ).unwrap().to_str().unwrap().to_owned();
+    let mountpoint: String =
+        std::fs::canonicalize(matches.value_of("mount-point").unwrap().to_string())
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_owned();
 
-    let options = MountOption::to_vec(matches
-        .values_of("options")
-        .unwrap_or_default());
+    let options = MountOption::to_vec(matches.values_of("options").unwrap_or_default());
 
-    let runtime_config_string = format!("mountpoint={:?} endpoints={:?} opt={:?}", mountpoint, endpoints, options);
+    let runtime_config_string = format!(
+        "mountpoint={:?} endpoints={:?} opt={:?}",
+        mountpoint, endpoints, options
+    );
 
-    if ! foreground {
-        use std::process::{Command, Stdio};
+    if !foreground {
         use std::io::{Read, Write};
+        use std::process::{Command, Stdio};
 
-        let exe = std::env::current_exe().unwrap().to_str().unwrap().to_owned();
+        let exe = std::env::current_exe()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_owned();
         debug!("Launching server, current_exe={}", exe);
         info!("{}", runtime_config_string);
 
-        let mut args = vec!["--serve".to_owned(), format!("tifs:{}", endpoints.join(",")), mountpoint];
+        let mut args = vec![
+            "--serve".to_owned(),
+            format!("tifs:{}", endpoints.join(",")),
+            mountpoint,
+        ];
         if options.len() > 0 {
             args.push("-o".to_owned());
-            args.push(options.iter().map(|v| v.into()).collect::<Vec<String>>().join(","));
+            args.push(
+                options
+                    .iter()
+                    .map(|v| v.into())
+                    .collect::<Vec<String>>()
+                    .join(","),
+            );
         }
         if let Some(f) = logfile {
             args.push("--log-file".to_owned());
@@ -136,10 +156,10 @@ async fn main() {
 
     mount_tifs_daemonize(mountpoint, endpoints, options, move || {
         if serve {
-            use libc;
             use anyhow::bail;
-            use std::io::Error;
+            use libc;
             use std::ffi::CString;
+            use std::io::Error;
             use std::io::Write;
 
             debug!("Using log file: {:?}", logfile);
@@ -185,5 +205,7 @@ async fn main() {
         debug!("{}", runtime_config_string);
 
         Ok(())
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
