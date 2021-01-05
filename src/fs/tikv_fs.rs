@@ -596,6 +596,15 @@ impl AsyncFileSystem for TiFs {
                 })
             })
             .await?;
-        Ok(StatFs::new(blocks, 0, 0, files, ffree, bsize, namelen, 0))
+        Ok(StatFs::new(
+            blocks,
+            std::u64::MAX,
+            std::u64::MAX,
+            files,
+            ffree,
+            bsize,
+            namelen,
+            0,
+        ))
     }
 }
