@@ -62,7 +62,7 @@ impl Txn {
             // TODO: update attributes of directory
         }
 
-        let mut inode = Inode(FileAttr {
+        let inode = Inode(FileAttr {
             ino,
             size: 0,
             blocks: 0,
@@ -228,10 +228,7 @@ impl Txn {
         let mut start_value = if start_index > 0 {
             self.get_for_update(start_key.clone())
                 .await?
-                .ok_or_else(|| FsError::BlockNotFound {
-                    inode: ino,
-                    block: block_index,
-                })?
+                .unwrap_or_else(|| vec![0; start_index as usize])
         } else {
             Vec::with_capacity(first_block.len())
         };
@@ -248,12 +245,10 @@ impl Txn {
             if value.len() != TiFs::BLOCK_SIZE as usize
                 && (block_index * TiFs::BLOCK_SIZE + value.len() as u64) < attr.size
             {
-                let last_value = self.get_for_update(key.clone()).await?.ok_or_else(|| {
-                    FsError::BlockNotFound {
-                        inode: ino,
-                        block: block_index,
-                    }
-                })?;
+                let last_value = self
+                    .get_for_update(key.clone())
+                    .await?
+                    .unwrap_or_else(|| vec![0; (attr.size % TiFs::BLOCK_SIZE) as usize]);
 
                 value.extend_from_slice(&last_value[value.len()..]);
             }
