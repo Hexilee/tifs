@@ -40,6 +40,10 @@ impl ScopedKey {
         Self::new(inode, block_range.start).scoped()..Self::new(inode, block_range.end).scoped()
     }
 
+    pub fn inode_range(ino_range: Range<u64>) -> Range<Key> {
+        Self::inode(ino_range.start).scoped()..Self::inode(ino_range.end).scoped()
+    }
+
     pub fn scoped(&self) -> Key {
         let mut data = Vec::with_capacity(KEY_LEN);
         data.extend(self.scope.to_be_bytes().iter());

@@ -83,7 +83,7 @@ impl Txn {
 
         debug!("made inode ({:?})", &inode);
 
-        self.save_inode(&mut inode).await?;
+        self.save_inode(&inode).await?;
         Ok(inode.into())
     }
 
@@ -103,7 +103,7 @@ impl Txn {
         Ok(Inode::deserialize(&value)?)
     }
 
-    pub async fn save_inode(&mut self, inode: &mut Inode) -> Result<()> {
+    pub async fn save_inode(&mut self, inode: &Inode) -> Result<()> {
         let key = ScopedKey::inode(inode.0.ino).scoped();
 
         if inode.0.nlink == 0 {
@@ -192,7 +192,7 @@ impl Txn {
         }
 
         attr.atime = SystemTime::now();
-        self.save_inode(&mut attr.into()).await?;
+        self.save_inode(&attr).await?;
         Ok(data)
     }
 
@@ -207,7 +207,7 @@ impl Txn {
         let clear_size = attr.size;
         attr.size = 0;
         attr.atime = SystemTime::now();
-        self.save_inode(&mut attr.into()).await?;
+        self.save_inode(&attr).await?;
         Ok(clear_size)
     }
 
@@ -264,8 +264,8 @@ impl Txn {
         attr.atime = SystemTime::now();
         attr.mtime = SystemTime::now();
         attr.ctime = SystemTime::now();
-        attr.size = attr.size.max(target);
-        self.save_inode(&mut attr.into()).await?;
+        attr.set_size(attr.size.max(target));
+        self.save_inode(&attr.into()).await?;
         debug!("write data: {}", String::from_utf8_lossy(&data));
         Ok(size)
     }
@@ -273,7 +273,7 @@ impl Txn {
     pub async fn fallocate(&mut self, inode: &mut Inode, offset: i64, length: i64) -> Result<()> {
         let target_size = (offset + length) as u64;
         if target_size > inode.size {
-            inode.size = target_size;
+            inode.set_size(target_size);
             inode.mtime = SystemTime::now();
             self.save_inode(inode).await?;
         }
@@ -321,12 +321,11 @@ impl Txn {
     pub async fn save_dir(&mut self, ino: u64, dir: &Directory) -> Result<()> {
         let data = dir.serialize()?;
         let mut attr = self.read_inode(ino).await?;
-        attr.size = data.len() as u64;
-        attr.blocks = 1;
+        attr.set_size(data.len() as u64);
         attr.atime = SystemTime::now();
         attr.mtime = SystemTime::now();
         attr.ctime = SystemTime::now();
-        self.save_inode(&mut attr).await?;
+        self.save_inode(&attr).await?;
         self.put(ScopedKey::dir(ino), data).await?;
         Ok(())
     }

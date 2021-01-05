@@ -4,11 +4,21 @@ use std::ops::{Deref, DerefMut};
 
 use super::error::{FsError, Result};
 use super::serialize::{deserialize, serialize, ENCODING};
+use super::tikv_fs::TiFs;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Inode(pub FileAttr);
 
 impl Inode {
+    fn update_blocks(&mut self) {
+        self.blocks = (self.size + TiFs::BLOCK_SIZE - 1) / TiFs::BLOCK_SIZE;
+    }
+
+    pub fn set_size(&mut self, size: u64) {
+        self.size = size;
+        self.update_blocks();
+    }
+
     pub fn serialize(&self) -> Result<Vec<u8>> {
         serialize(self).map_err(|err| FsError::Serialize {
             target: "inode",

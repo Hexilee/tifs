@@ -17,7 +17,8 @@ use super::async_fs::AsyncFileSystem;
 use super::dir::Directory;
 use super::error::{FsError, Result};
 use super::file_handler::{FileHandler, FileHub};
-use super::key::ROOT_INODE;
+use super::inode::Inode;
+use super::key::{ScopedKey, ROOT_INODE};
 use super::mode::{as_file_perm, make_mode};
 use super::reply::get_time;
 use super::reply::{Attr, Create, Data, Dir, DirItem, Entry, Lseek, Open, StatFs, Write};
@@ -206,7 +207,7 @@ impl AsyncFileSystem for TiFs {
                 };
                 attr.uid = uid.unwrap_or(attr.uid);
                 attr.gid = gid.unwrap_or(attr.gid);
-                attr.size = size.unwrap_or(attr.size);
+                attr.set_size(size.unwrap_or(attr.size));
                 attr.atime = match atime {
                     Some(TimeOrNow::SpecificTime(t)) => t,
                     Some(TimeOrNow::Now) | None => SystemTime::now(),
@@ -218,7 +219,7 @@ impl AsyncFileSystem for TiFs {
                 attr.ctime = ctime.unwrap_or(attr.ctime);
                 attr.crtime = crtime.unwrap_or(attr.crtime);
                 attr.flags = flags.unwrap_or(attr.flags);
-                txn.save_inode(&mut attr).await?;
+                txn.save_inode(&attr).await?;
                 Ok(Attr {
                     time: get_time(),
                     attr: attr.into(),
@@ -450,7 +451,7 @@ impl AsyncFileSystem for TiFs {
 
                 txn.save_dir(newparent, &dir).await?;
                 attr.nlink += 1;
-                txn.save_inode(&mut attr.into()).await?;
+                txn.save_inode(&attr).await?;
                 Ok(Entry::new(attr.into(), 0))
             })
         })
@@ -469,8 +470,7 @@ impl AsyncFileSystem for TiFs {
                 txn.save_dir(parent, &dir).await?;
                 let mut attr = txn.read_inode_for_update(item.ino).await?;
                 attr.nlink -= 1;
-                txn.save_inode(&mut attr.into()).await?;
-
+                txn.save_inode(&attr).await?;
                 Ok(())
             })
         })
@@ -533,11 +533,11 @@ impl AsyncFileSystem for TiFs {
                     .make_inode(parent, name, make_mode(FileType::Symlink, 0o777), gid, uid)
                     .await?;
 
-                attr.size = txn
-                    .write_data(attr.ino, 0, link.as_os_str().as_bytes().to_vec())
-                    .await? as u64;
-
-                txn.save_inode(&mut attr).await?;
+                attr.set_size(
+                    txn.write_data(attr.ino, 0, link.as_os_str().as_bytes().to_vec())
+                        .await? as u64,
+                );
+                txn.save_inode(&attr).await?;
                 Ok(Entry::new(attr.into(), 0))
             })
         })
@@ -574,7 +574,28 @@ impl AsyncFileSystem for TiFs {
     async fn statfs(&self, _ino: u64) -> Result<StatFs> {
         let bsize = Self::BLOCK_SIZE as u32;
         let namelen = Self::MAX_NAME_LEN;
-
-        Ok(StatFs::new(0, 0, 0, 0, 0, bsize, namelen, 0))
+        let (ffree, blocks, files) = self
+            .with_txn(move |_, txn| {
+                Box::pin(async move {
+                    let next_inode = txn
+                        .read_meta()
+                        .await?
+                        .map(|meta| meta.inode_next)
+                        .unwrap_or(ROOT_INODE);
+                    let (b, f) = txn
+                        .scan(
+                            ScopedKey::inode_range(ROOT_INODE..next_inode),
+                            (next_inode - ROOT_INODE) as u32,
+                        )
+                        .await?
+                        .map(|pair| Inode::deserialize(pair.value()))
+                        .try_fold((0, 0), |(blocks, files), inode| {
+                            Ok::<_, FsError>((blocks + inode?.blocks, files + 1))
+                        })?;
+                    Ok((std::u64::MAX - next_inode, b, f))
+                })
+            })
+            .await?;
+        Ok(StatFs::new(blocks, 0, 0, files, ffree, bsize, namelen, 0))
     }
 }
