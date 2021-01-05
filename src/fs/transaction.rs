@@ -290,8 +290,7 @@ impl Txn {
     ) -> Result<Inode> {
         let dir_mode = make_mode(FileType::Directory, as_file_perm(mode));
         let attr = self.make_inode(parent, name, dir_mode, gid, uid).await?;
-        let dir = Directory::new(attr.ino, parent);
-        self.save_dir(attr.ino, &dir).await?;
+        self.save_dir(attr.ino, &Directory::new()).await?;
         Ok(attr)
     }
 

@@ -229,9 +229,28 @@ impl AsyncFileSystem for TiFs {
     }
 
     #[tracing::instrument]
-    async fn readdir(&self, ino: u64, _fh: u64, offset: i64) -> Result<Dir> {
-        let directory = self.read_dir(ino).await?;
+    async fn readdir(&self, ino: u64, _fh: u64, mut offset: i64) -> Result<Dir> {
         let mut dir = Dir::offset(offset as usize);
+
+        if offset == 0 {
+            dir.push(DirItem {
+                ino: ROOT_INODE,
+                name: "..".to_string(),
+                typ: FileType::Directory,
+            });
+        }
+
+        if offset <= 1 {
+            dir.push(DirItem {
+                ino,
+                name: ".".to_string(),
+                typ: FileType::Directory,
+            });
+        }
+
+        offset -= 2.min(offset);
+
+        let directory = self.read_dir(ino).await?;
         for (item) in directory
             .into_map()
             .into_values()
@@ -319,10 +338,7 @@ impl AsyncFileSystem for TiFs {
                 })?;
 
                 let dir_contents = txn.read_dir(item.ino).await?;
-                if let Some(_) = dir_contents
-                    .iter()
-                    .find(|(key, _)| key.as_str() != "." && key.as_str() != "..")
-                {
+                if dir_contents.len() != 0 {
                     let name_str = name.to_string();
                     debug!("dir({}) not empty", &name_str);
                     return Err(FsError::DirNotEmpty { dir: name_str });

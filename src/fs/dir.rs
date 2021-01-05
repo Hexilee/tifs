@@ -13,28 +13,8 @@ use super::serialize::{deserialize, serialize, ENCODING};
 pub struct Directory(HashMap<String, DirItem>);
 
 impl Directory {
-    pub fn new(ino: u64, parent: u64) -> Self {
-        let mut dir = Directory(HashMap::new());
-        dir.add(DirItem {
-            ino: ino,
-            name: ".".into(),
-            typ: FileType::Directory,
-        });
-
-        if ino != ROOT_INODE {
-            dir.add(DirItem {
-                ino: parent,
-                name: "..".into(),
-                typ: FileType::Directory,
-            });
-        } else {
-            dir.add(DirItem {
-                ino: ino,
-                name: "..".into(),
-                typ: FileType::Directory,
-            });
-        }
-        dir
+    pub fn new() -> Self {
+        Self(HashMap::new())
     }
 
     pub fn add(&mut self, item: DirItem) -> Option<DirItem> {
