@@ -54,8 +54,8 @@ pub enum FsError {
     #[error("strip prefix error")]
     StripPrefixError(#[from] std::path::StripPrefixError),
 
-    #[error("unknown error")]
-    UnknownError,
+    #[error("unknown error({0})")]
+    UnknownError(String),
 }
 
 pub type Result<T> = std::result::Result<T, FsError>;
@@ -75,10 +75,7 @@ impl From<nix::Error> for FsError {
         // TODO: match more error types
         match err {
             Error::Sys(errno) => Self::Sys(errno),
-            _ => {
-                error!("unknown error {:?}", err);
-                Self::UnknownError
-            }
+            _ => Self::UnknownError(err.to_string()),
         }
     }
 }
@@ -91,8 +88,7 @@ impl From<std::ffi::NulError> for FsError {
 
 impl From<std::io::Error> for FsError {
     fn from(err: std::io::Error) -> Self {
-        error!("unknown error {:?}", err);
-        Self::UnknownError
+        Self::UnknownError(err.to_string())
     }
 }
 
@@ -107,7 +103,7 @@ impl From<tikv_client::Error> for FsError {
                 inode: scoped_key.key(),
             }
         } else {
-            Self::UnknownError
+            Self::UnknownError(err.to_string())
         }
     }
 }
