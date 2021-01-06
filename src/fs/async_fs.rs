@@ -465,7 +465,7 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
         &mut self,
         req: &Request,
         _config: &mut KernelConfig,
-    ) -> std::result::Result<(), nix::libc::c_int> {
+    ) -> std::result::Result<(), libc::c_int> {
         let uid = req.uid();
         let gid = req.gid();
 

@@ -1,5 +1,3 @@
-use nix::errno::Errno;
-use nix::Error;
 use thiserror::Error;
 use tikv_client::Key;
 use tracing::error;
@@ -8,9 +6,6 @@ use super::key::ScopedKey;
 
 #[derive(Error, Debug)]
 pub enum FsError {
-    #[error("errno {0}")]
-    Sys(Errno),
-
     #[error("unimplemented")]
     Unimplemented,
 
@@ -61,22 +56,8 @@ pub enum FsError {
 pub type Result<T> = std::result::Result<T, FsError>;
 
 impl FsError {
-    pub fn last() -> Self {
-        nix::Error::last().into()
-    }
-
     pub fn unimplemented() -> Self {
         Self::Unimplemented
-    }
-}
-
-impl From<nix::Error> for FsError {
-    fn from(err: Error) -> Self {
-        // TODO: match more error types
-        match err {
-            Error::Sys(errno) => Self::Sys(errno),
-            _ => Self::UnknownError(err.to_string()),
-        }
     }
 }
 
@@ -94,9 +75,7 @@ impl From<std::io::Error> for FsError {
 
 impl From<tikv_client::Error> for FsError {
     fn from(err: tikv_client::Error) -> Self {
-        use tikv_client::ErrorKind;
-
-        if let ErrorKind::RegionForKeyNotFound { key: key_data } = err.kind() {
+        if let tikv_client::Error::RegionForKeyNotFound { key: key_data } = err {
             let key: Key = key_data.clone().into();
             let scoped_key: ScopedKey = key.into();
             Self::InodeNotFound {
@@ -113,7 +92,6 @@ impl Into<libc::c_int> for FsError {
         use FsError::*;
 
         match self {
-            Sys(errno) => errno as i32,
             Unimplemented => libc::ENOSYS,
             FileNotFound { file: _ } => libc::ENOENT,
             FileExist { file: _ } => libc::EEXIST,

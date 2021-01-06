@@ -18,8 +18,8 @@ use super::tikv_fs::TiFs;
 pub struct Txn(Transaction);
 
 impl Txn {
-    pub async fn begin(client: &TransactionClient) -> Result<Self> {
-        Ok(Txn(client.begin().await?))
+    pub async fn begin_optimistic(client: &TransactionClient) -> Result<Self> {
+        Ok(Txn(client.begin_optimistic().await?))
     }
 
     pub async fn begin_pessimistic(client: &TransactionClient) -> Result<Self> {
