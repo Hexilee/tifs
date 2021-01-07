@@ -3,6 +3,8 @@
 
 mod fs;
 
+pub use fs::key::ScopedKey;
+
 use fs::async_fs::AsyncFs;
 use fs::tikv_fs::TiFs;
 
