@@ -282,12 +282,14 @@ impl AsyncFileSystem for TiFs {
         _lock_owner: Option<u64>,
     ) -> Result<Data> {
         let handler = self.read_fh(ino, fh).await?;
-        let mut cursor = handler.cursor().await;
-        *cursor = ((*cursor) as i64 + offset) as usize;
-        let data = self
-            .read_data(ino, *cursor as u64, Some(size as u64))
-            .await?;
-        *cursor += data.len();
+        let start = *handler.read_cursor().await as i64 + offset;
+        if start < 0 {
+            return Err(FsError::InvalidOffset {
+                ino: ino,
+                offset: start,
+            });
+        }
+        let data = self.read_data(ino, start as u64, Some(size as u64)).await?;
         Ok(Data::new(data))
     }
 
@@ -303,12 +305,17 @@ impl AsyncFileSystem for TiFs {
         _lock_owner: Option<u64>,
     ) -> Result<Write> {
         let handler = self.read_fh(ino, fh).await?;
-        let mut cursor = handler.cursor().await;
-        *cursor = (*cursor as i64 + offset) as usize;
+        let start = *handler.read_cursor().await as i64 + offset;
+        if start < 0 {
+            return Err(FsError::InvalidOffset {
+                ino: ino,
+                offset: start,
+            });
+        }
+
         let data_len = data.len();
-        let _ = self.write_data(ino, *cursor as u64, data).await?;
-        *cursor += data_len;
-        Ok(Write::new(*cursor as u32))
+        let _ = self.write_data(ino, start as u64, data).await?;
+        Ok(Write::new(data_len as u32))
     }
 
     /// Create a directory.

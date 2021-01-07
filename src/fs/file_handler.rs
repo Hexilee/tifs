@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use async_std::sync::{RwLock, RwLockWriteGuard};
+use async_std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use slab::Slab;
 
 type FileSlab = RwLock<Slab<FileHandler>>;
@@ -60,6 +60,10 @@ impl FileHandler {
         Self {
             cursor: Arc::new(RwLock::new(0)),
         }
+    }
+
+    pub async fn read_cursor(&self) -> RwLockReadGuard<'_, Cursor> {
+        self.cursor.read().await
     }
 
     pub async fn cursor(&self) -> RwLockWriteGuard<'_, Cursor> {
