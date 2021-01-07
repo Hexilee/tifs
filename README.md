@@ -92,5 +92,5 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
         - [x] git
         - [ ] cargo build
         - [ ] npm install
-        - [ ] sqlite
+        - [x] sqlite
         - [ ] tikv on tifs
