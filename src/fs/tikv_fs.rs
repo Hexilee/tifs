@@ -496,7 +496,6 @@ impl AsyncFileSystem for TiFs {
             Box::pin(async move {
                 let mut dir = txn.read_dir_for_update(parent).await?;
                 let name = raw_name.to_string_lossy();
-
                 match dir.remove(&*name) {
                     None => Err(FsError::FileNotFound {
                         file: name.to_string(),
@@ -512,11 +511,10 @@ impl AsyncFileSystem for TiFs {
 
                         item.name = new_raw_name.to_string_lossy().to_string();
                         if let Some(old_item) = new_dir.add(item) {
-                            return Err(FsError::FileExist {
-                                file: old_item.name,
-                            });
+                            let mut old_inode = txn.read_inode_for_update(old_item.ino).await?;
+                            old_inode.nlink -= 1;
+                            txn.save_inode(&old_inode).await?;
                         }
-
                         txn.save_dir(newparent, &new_dir).await?;
                         Ok(())
                     }

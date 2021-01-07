@@ -89,7 +89,7 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
     - [ ] real-world usage
         - [x] vim
         - [ ] emacs
-        - [ ] git init
+        - [x] git
         - [ ] cargo build
         - [ ] npm install
         - [ ] sqlite
