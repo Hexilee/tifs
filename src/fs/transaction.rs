@@ -146,8 +146,6 @@ impl Txn {
         let mut attr = self.read_inode(ino).await?;
         let size = chunk_size.unwrap_or_else(|| attr.size - start);
         let target = start + size;
-
-        let data_size = target - start;
         let start_block = start / TiFs::BLOCK_SIZE;
         let end_block = (target + TiFs::BLOCK_SIZE - 1) / TiFs::BLOCK_SIZE;
 
@@ -157,8 +155,6 @@ impl Txn {
                 (end_block - start_block) as u32,
             )
             .await?;
-
-        let is_last_block = |index| (index as u64 + 1) * TiFs::BLOCK_SIZE > data_size;
 
         let mut data = pairs
             .enumerate()
@@ -171,23 +167,22 @@ impl Txn {
             })
             .enumerate()
             .fold(
-                Vec::with_capacity(data_size as usize),
+                Vec::with_capacity(
+                    ((end_block - start_block) * TiFs::BLOCK_SIZE - start % TiFs::BLOCK_SIZE)
+                        as usize,
+                ),
                 |mut data, (i, value)| {
-                    let slice = match i {
-                        0 => &value[(start_block % TiFs::BLOCK_SIZE) as usize..],
-                        n if is_last_block(n) => &value[..(data_size % TiFs::BLOCK_SIZE) as usize],
-                        _ => value.as_slice(),
-                    };
+                    let mut slice = value.as_slice();
+                    if i == 0 {
+                        slice = &slice[(start % TiFs::BLOCK_SIZE) as usize..]
+                    }
 
                     data.extend_from_slice(slice);
                     data
                 },
             );
 
-        if data.len() < size as usize {
-            data.resize(size as usize, 0);
-        }
-
+        data.resize(size as usize, 0);
         attr.atime = SystemTime::now();
         self.save_inode(&attr).await?;
         Ok(data)
