@@ -100,14 +100,14 @@ impl Console {
     }
 
     async fn get_block(&self, txn: &mut Transaction, args: &[&str]) -> Result<()> {
-        if args.len() != 2 {
+        if args.len() < 2 {
             return Err(anyhow!("invalid arguments `{:?}`", args));
         }
         match txn
             .get(ScopedKey::new(args[0].parse()?, args[1].parse()?))
             .await?
         {
-            Some(value) => println!("{:?}", value),
+            Some(value) => println!("{:?}", &value[args.get(2).unwrap_or(&"0").parse()?..]),
             None => println!("Not Found"),
         }
         Ok(())
