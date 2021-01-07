@@ -245,11 +245,13 @@ impl Txn {
             if value.len() != TiFs::BLOCK_SIZE as usize
                 && (block_index * TiFs::BLOCK_SIZE + value.len() as u64) < attr.size
             {
-                let last_value = self
+                let mut last_value = self
                     .get_for_update(key.clone())
                     .await?
-                    .unwrap_or_else(|| vec![0; (attr.size % TiFs::BLOCK_SIZE) as usize]);
-
+                    .unwrap_or_else(|| Vec::new());
+                if last_value.len() <= value.len() {
+                    last_value = vec![0; TiFs::BLOCK_SIZE as usize];
+                }
                 value.extend_from_slice(&last_value[value.len()..]);
             }
             self.put(key, value).await?;
