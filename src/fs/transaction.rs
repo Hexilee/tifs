@@ -6,6 +6,7 @@ use fuser::{FileAttr, FileType};
 use tikv_client::{Transaction, TransactionClient};
 use tracing::{debug, instrument};
 
+use super::block::empty_block;
 use super::dir::Directory;
 use super::error::{FsError, Result};
 use super::inode::Inode;
@@ -164,18 +165,14 @@ impl Txn {
             .flat_map(|(i, pair)| {
                 let key: ScopedKey = pair.key().clone().into();
                 let value = pair.into_value();
-                (i..key.key() as usize)
-                    .map(|_| vec![0; TiFs::BLOCK_SIZE as usize])
+                (start_block as usize + i..key.key() as usize)
+                    .map(|_| empty_block())
                     .chain(vec![value])
             })
             .enumerate()
             .fold(
                 Vec::with_capacity(data_size as usize),
-                |mut data, (i, mut value)| {
-                    if !is_last_block(i) && value.len() < TiFs::BLOCK_SIZE as usize {
-                        value.resize(TiFs::BLOCK_SIZE as usize, 0);
-                    }
-
+                |mut data, (i, value)| {
                     let slice = match i {
                         0 => &value[(start_block % TiFs::BLOCK_SIZE) as usize..],
                         n if is_last_block(n) => &value[..(data_size % TiFs::BLOCK_SIZE) as usize],
@@ -219,21 +216,21 @@ impl Txn {
 
         let mut block_index = start / TiFs::BLOCK_SIZE;
         let start_key = ScopedKey::new(ino, block_index).scoped();
-        let start_index = start % TiFs::BLOCK_SIZE;
+        let start_index = (start % TiFs::BLOCK_SIZE) as usize;
 
-        let first_block_size = (TiFs::BLOCK_SIZE - start_index) as usize;
+        let first_block_size = TiFs::BLOCK_SIZE as usize - start_index;
 
         let (first_block, mut rest) = data.split_at(first_block_size.min(data.len()));
 
         let mut start_value = if start_index > 0 {
             self.get_for_update(start_key.clone())
                 .await?
-                .unwrap_or_else(|| vec![0; start_index as usize])
+                .unwrap_or_else(empty_block)
         } else {
-            Vec::with_capacity(first_block.len())
+            empty_block()
         };
 
-        start_value.extend_from_slice(first_block);
+        start_value[start_index..start_index + first_block.len()].copy_from_slice(first_block);
         self.put(start_key, start_value).await?;
 
         while rest.len() != 0 {
@@ -242,17 +239,13 @@ impl Txn {
             let (curent_block, current_rest) =
                 rest.split_at((TiFs::BLOCK_SIZE as usize).min(rest.len()));
             let mut value = curent_block.to_vec();
-            if value.len() != TiFs::BLOCK_SIZE as usize
-                && (block_index * TiFs::BLOCK_SIZE + value.len() as u64) < attr.size
-            {
+            if value.len() < TiFs::BLOCK_SIZE as usize {
                 let mut last_value = self
                     .get_for_update(key.clone())
                     .await?
-                    .unwrap_or_else(|| Vec::new());
-                if last_value.len() <= value.len() {
-                    last_value = vec![0; TiFs::BLOCK_SIZE as usize];
-                }
-                value.extend_from_slice(&last_value[value.len()..]);
+                    .unwrap_or_else(empty_block);
+                last_value[..value.len()].copy_from_slice(&value);
+                value = last_value;
             }
             self.put(key, value).await?;
             rest = current_rest;
