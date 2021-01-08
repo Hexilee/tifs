@@ -144,7 +144,12 @@ impl Txn {
         chunk_size: Option<u64>,
     ) -> Result<Vec<u8>> {
         let mut attr = self.read_inode(ino).await?;
-        let size = chunk_size.unwrap_or_else(|| attr.size - start);
+        if start >= attr.size {
+            return Ok(Vec::new());
+        }
+
+        let max_size = attr.size - start;
+        let size = chunk_size.unwrap_or(max_size).min(max_size);
         let target = start + size;
         let start_block = start / TiFs::BLOCK_SIZE;
         let end_block = (target + TiFs::BLOCK_SIZE - 1) / TiFs::BLOCK_SIZE;
