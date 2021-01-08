@@ -217,15 +217,13 @@ impl Txn {
 
         let (first_block, mut rest) = data.split_at(first_block_size.min(data.len()));
 
-        let mut start_value = if start_index > 0 {
-            self.get_for_update(start_key.clone())
-                .await?
-                .unwrap_or_else(empty_block)
-        } else {
-            empty_block()
-        };
+        let mut start_value = self
+            .get_for_update(start_key.clone())
+            .await?
+            .unwrap_or_else(empty_block);
 
         start_value[start_index..start_index + first_block.len()].copy_from_slice(first_block);
+
         self.put(start_key, start_value).await?;
 
         while rest.len() != 0 {
