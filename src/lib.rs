@@ -46,7 +46,7 @@ macro_rules! define_options {
                 fn from(v: T) -> Self {
                     match &v.to_string() as &str {
                         $(stringify!([<$opt:lower>]) => Self::$opt,)*
-                        $(stringify!([<$newopt:lower>]) => Self::$newopt,)*
+                        $(stringify!([<$newopt:snake>]) => Self::$newopt,)*
                         k => Self::Unknown(k.to_owned()),
                     }
                 }
@@ -55,7 +55,7 @@ macro_rules! define_options {
                 fn from(v: &$name) -> Self {
                     match v {
                         $($name::$opt => stringify!([<$opt:lower>]),)*
-                        $($name::$newopt => stringify!([<$newopt:lower>]),)*
+                        $($name::$newopt => stringify!([<$newopt:snake>]),)*
                         $name::Unknown(v) => v,
                     }.to_owned()
                 }
@@ -64,7 +64,7 @@ macro_rules! define_options {
     };
 }
 
-define_options! { MountOption, [], [
+define_options! { MountOption, [DirectIO], [
     Dev,
     NoDev,
     Suid,
@@ -74,7 +74,7 @@ define_options! { MountOption, [], [
     Exec,
     NoExec,
     DirSync,
-] }
+]}
 
 pub async fn mount_tifs_daemonize<F>(
     mountpoint: String,
@@ -94,7 +94,7 @@ where
 
     fuse_options.extend(MountOption::to_builtin(options.iter()));
 
-    let fs_impl = TiFs::construct(endpoints, Default::default()).await?;
+    let fs_impl = TiFs::construct(endpoints, Default::default(), options).await?;
 
     make_daemon()?;
 

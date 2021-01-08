@@ -1,6 +1,7 @@
 use std::ffi::OsString;
 use std::fmt::{self, Debug};
 use std::future::Future;
+use std::matches;
 use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -8,8 +9,9 @@ use std::time::SystemTime;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
+use fuser::consts::FOPEN_DIRECT_IO;
 use fuser::*;
-use libc::{SEEK_CUR, SEEK_END, SEEK_SET};
+use libc::{O_DIRECT, SEEK_CUR, SEEK_END, SEEK_SET};
 use tikv_client::{Config, TransactionClient};
 use tracing::{debug, info, instrument, trace};
 
@@ -23,12 +25,14 @@ use super::mode::{as_file_perm, make_mode};
 use super::reply::get_time;
 use super::reply::{Attr, Create, Data, Dir, DirItem, Entry, Lseek, Open, StatFs, Write};
 use super::transaction::Txn;
+use crate::MountOption;
 
 pub struct TiFs {
     pub pd_endpoints: Vec<String>,
     pub config: Config,
     pub client: TransactionClient,
     pub hub: FileHub,
+    pub direct_io: bool,
     // inode_cache: RwLock<LruCache<u64, Inode>>,
     // block_cache: RwLock<LruCache<ScopedKey, Vec<u8>>>,
     // dir_cache: RwLock<LruCache<u64, Directory>>,
@@ -45,7 +49,11 @@ impl TiFs {
     pub const MAX_NAME_LEN: u32 = 1 << 8;
 
     #[instrument]
-    pub async fn construct<S>(pd_endpoints: Vec<S>, cfg: Config) -> anyhow::Result<Self>
+    pub async fn construct<S>(
+        pd_endpoints: Vec<S>,
+        cfg: Config,
+        options: Vec<MountOption>,
+    ) -> anyhow::Result<Self>
     where
         S: Clone + Debug + Into<String>,
     {
@@ -58,6 +66,10 @@ impl TiFs {
             pd_endpoints: pd_endpoints.clone().into_iter().map(Into::into).collect(),
             config: cfg,
             hub: FileHub::new(),
+            direct_io: options
+                .iter()
+                .find(|option| matches!(option, MountOption::DirectIO))
+                .is_some(),
             // inode_cache: RwLock::new(LruCache::new(Self::INODE_CACHE / size_of::<Inode>())),
             // block_cache: RwLock::new(LruCache::new(Self::BLOCK_CACHE / Self::BLOCK_SIZE)),
             // dir_cache: RwLock::new(LruCache::new(Self::DIR_CACHE / Self::BLOCK_SIZE)),
@@ -268,7 +280,12 @@ impl AsyncFileSystem for TiFs {
     async fn open(&self, ino: u64, flags: i32) -> Result<Open> {
         // TODO: deal with flags
         let fh = self.hub.make(ino).await;
-        Ok(Open::new(fh, flags as u32))
+        let mut open_flags = 0;
+        if self.direct_io || flags | O_DIRECT != 0 {
+            open_flags |= FOPEN_DIRECT_IO;
+        }
+
+        Ok(Open::new(fh, open_flags))
     }
 
     #[tracing::instrument]
