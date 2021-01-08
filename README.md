@@ -75,7 +75,7 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
         - [x] nlinks
         - [x] directory
         - [x] start and end block
-    - [ ] direct io
+    - [x] direct io
 
 - [ ] Performance
     - [ ] cache
