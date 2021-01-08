@@ -92,6 +92,7 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
         - [ ] emacs
         - [x] git
         - [x] gcc
+        - [x] rustc
         - [ ] cargo build
         - [ ] npm install
         - [x] sqlite
