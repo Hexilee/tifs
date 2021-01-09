@@ -1,9 +1,7 @@
 #![feature(map_into_keys_values)]
 #![feature(async_closure)]
 
-mod fs;
-
-pub use fs::key::ScopedKey;
+pub mod fs;
 
 use fs::async_fs::AsyncFs;
 use fs::tikv_fs::TiFs;

@@ -3,10 +3,12 @@ use std::io::{stdin, stdout, BufRead, BufReader, Write};
 
 use anyhow::{anyhow, Result};
 use clap::{crate_version, App, Arg};
-use tikv_client::{Transaction, TransactionClient};
+use tikv_client::TransactionClient;
 use tracing_subscriber::EnvFilter;
 
-use tifs::ScopedKey;
+use tifs::fs::inode::Inode;
+use tifs::fs::key::{ScopedKey, ROOT_INODE};
+use tifs::fs::transaction::Txn;
 
 #[async_std::main]
 async fn main() -> Result<()> {
@@ -66,7 +68,7 @@ impl Console {
     }
 
     async fn interact(&self) -> Result<bool> {
-        let mut txn = self.client.begin_optimistic().await?;
+        let mut txn = Txn::begin_optimistic(&self.client).await?;
         match self.interact_with_txn(&mut txn).await {
             Ok(exit) => {
                 txn.commit().await?;
@@ -79,7 +81,7 @@ impl Console {
         }
     }
 
-    async fn interact_with_txn(&self, txn: &mut Transaction) -> Result<bool> {
+    async fn interact_with_txn(&self, txn: &mut Txn) -> Result<bool> {
         print!("{:?}> ", &self.pd_endpoints);
         stdout().flush()?;
 
@@ -92,14 +94,39 @@ impl Console {
 
         match commands[0] {
             "exit" => return Ok(true),
-            "get_block" => self.get_block(txn, &commands[1..]).await?,
+            "reset" => self.reset(txn).await?,
+            "get" => self.get_block(txn, &commands[1..]).await?,
+            "get_str" => self.get_block_str(txn, &commands[1..]).await?,
+            "rm" => self.delete_block(txn, &commands[1..]).await?,
             cmd => return Err(anyhow!("unknow command `{}`", cmd)),
         }
 
         Ok(false)
     }
 
-    async fn get_block(&self, txn: &mut Transaction, args: &[&str]) -> Result<()> {
+    async fn reset(&self, txn: &mut Txn) -> Result<()> {
+        let next_inode = txn
+            .read_meta()
+            .await?
+            .map(|meta| meta.inode_next)
+            .unwrap_or(ROOT_INODE);
+        for inode in txn
+            .scan(
+                ScopedKey::inode_range(ROOT_INODE..next_inode),
+                (next_inode - ROOT_INODE) as u32,
+            )
+            .await?
+            .map(|pair| Inode::deserialize(pair.value()))
+        {
+            let inode = inode?;
+            txn.clear_data(inode.ino).await?;
+            txn.remove_inode(inode.ino).await?;
+        }
+        txn.delete(ScopedKey::meta()).await?;
+        Ok(())
+    }
+
+    async fn get_block(&self, txn: &mut Txn, args: &[&str]) -> Result<()> {
         if args.len() < 2 {
             return Err(anyhow!("invalid arguments `{:?}`", args));
         }
@@ -110,6 +137,29 @@ impl Console {
             Some(value) => println!("{:?}", &value[args.get(2).unwrap_or(&"0").parse()?..]),
             None => println!("Not Found"),
         }
+        Ok(())
+    }
+
+    async fn get_block_str(&self, txn: &mut Txn, args: &[&str]) -> Result<()> {
+        if args.len() < 2 {
+            return Err(anyhow!("invalid arguments `{:?}`", args));
+        }
+        match txn
+            .get(ScopedKey::new(args[0].parse()?, args[1].parse()?))
+            .await?
+        {
+            Some(value) => println!("{:?}", String::from_utf8_lossy(&value)),
+            None => println!("Not Found"),
+        }
+        Ok(())
+    }
+
+    async fn delete_block(&self, txn: &mut Txn, args: &[&str]) -> Result<()> {
+        if args.len() < 2 {
+            return Err(anyhow!("invalid arguments `{:?}`", args));
+        }
+        txn.delete(ScopedKey::new(args[0].parse()?, args[1].parse()?))
+            .await?;
         Ok(())
     }
 }
