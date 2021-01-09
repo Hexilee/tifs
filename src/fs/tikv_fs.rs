@@ -154,7 +154,8 @@ impl Debug for TiFs {
 #[async_trait]
 impl AsyncFileSystem for TiFs {
     #[tracing::instrument]
-    async fn init(&self, gid: u32, uid: u32) -> Result<()> {
+    async fn init(&self, gid: u32, uid: u32, config: &mut KernelConfig) -> Result<()> {
+        config.add_capabilities(fuser::consts::FUSE_POSIX_LOCKS);
         self.with_txn(move |fs, txn| {
             Box::pin(async move {
                 info!("initializing tifs on {:?} ...", &fs.pd_endpoints);
@@ -644,16 +645,6 @@ impl AsyncFileSystem for TiFs {
         pid: u32,
         sleep: bool,
     ) -> Result<()> {
-        // let handler = self.read_fh(ino, fh).await?;
-
-        // self.with_txn(move |_, txn| {
-        //     Box::pin(async move { 
-                
-        //         Ok(()) 
-        //     })
-        // })
-        // .await?;
-        
         Ok(())
     }
 

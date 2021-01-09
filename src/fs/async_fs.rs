@@ -39,7 +39,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// Initialize filesystem.
     /// Called before any other filesystem method.
     /// The kernel module connection can be configured using the KernelConfig object
-    async fn init(&self, _gid: u32, _uid: u32) -> Result<()> {
+    async fn init(&self, _gid: u32, _uid: u32, _config: &mut KernelConfig) -> Result<()> {
         Ok(())
     }
 
@@ -464,12 +464,12 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
     fn init(
         &mut self,
         req: &Request,
-        _config: &mut KernelConfig,
+        config: &mut KernelConfig,
     ) -> std::result::Result<(), libc::c_int> {
         let uid = req.uid();
         let gid = req.gid();
 
-        block_on(self.0.init(gid, uid)).map_err(|err| err.into())
+        block_on(self.0.init(gid, uid, config)).map_err(|err| err.into())
     }
 
     fn destroy(&mut self, _req: &Request) {
