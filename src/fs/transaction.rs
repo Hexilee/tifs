@@ -9,13 +9,14 @@ use tracing::{debug, instrument};
 use super::block::empty_block;
 use super::dir::Directory;
 use super::error::{FsError, Result};
-use super::inode::Inode;
+use super::inode::{Inode, LockType, LockState};
 use super::key::{ScopedKey, ROOT_INODE};
 use super::meta::Meta;
 use super::mode::{as_file_kind, as_file_perm, make_mode};
 use super::reply::DirItem;
 use super::tikv_fs::TiFs;
-
+use libc::{F_RDLCK, F_WRLCK, F_UNLCK, LOCK_SH, LOCK_EX, LOCK_UN, LOCK_NB};
+use std::collections::HashSet;
 pub struct Txn(Transaction);
 
 impl Txn {
@@ -63,24 +64,27 @@ impl Txn {
             // TODO: update attributes of directory
         }
 
-        let inode = Inode(FileAttr {
-            ino,
-            size: 0,
-            blocks: 0,
-            atime: SystemTime::now(),
-            mtime: SystemTime::now(),
-            ctime: SystemTime::now(),
-            crtime: SystemTime::now(),
-            kind: file_type,
-            perm: as_file_perm(mode),
-            nlink: 1,
-            uid,
-            gid,
-            rdev: 0,
-            blksize: TiFs::BLOCK_SIZE as u32,
-            padding: 0,
-            flags: 0,
-        });
+        let inode = Inode {
+            file_attr: FileAttr {
+                ino,
+                size: 0,
+                blocks: 0,
+                atime: SystemTime::now(),
+                mtime: SystemTime::now(),
+                ctime: SystemTime::now(),
+                crtime: SystemTime::now(),
+                kind: file_type,
+                perm: as_file_perm(mode),
+                nlink: 1,
+                uid,
+                gid,
+                rdev: 0,
+                blksize: TiFs::BLOCK_SIZE as u32,
+                padding: 0,
+                flags: 0,
+            },
+        lock_state: LockState::new(HashSet::new(),LockType(LOCK_UN))
+    };
 
         debug!("made inode ({:?})", &inode);
 
@@ -105,9 +109,9 @@ impl Txn {
     }
 
     pub async fn save_inode(&mut self, inode: &Inode) -> Result<()> {
-        let key = ScopedKey::inode(inode.0.ino).scoped();
+        let key = ScopedKey::inode(inode.file_attr.ino).scoped();
 
-        if inode.0.nlink == 0 {
+        if inode.file_attr.nlink == 0 {
             self.delete(key).await?;
         } else {
             self.put(key, inode.serialize()?).await?;

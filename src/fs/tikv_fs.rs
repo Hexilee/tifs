@@ -11,7 +11,7 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use fuser::consts::FOPEN_DIRECT_IO;
 use fuser::*;
-use libc::{O_DIRECT, SEEK_CUR, SEEK_END, SEEK_SET, F_RDLCK, F_WRLCK, F_UNLCK, LOCK_SH, LOCK_EX, LOCK_UN, LOCK_NB};
+use libc::{O_DIRECT, SEEK_CUR, SEEK_END, SEEK_SET};
 use tikv_client::{Config, TransactionClient};
 use tracing::{debug, info, instrument, trace};
 
@@ -155,7 +155,7 @@ impl Debug for TiFs {
 impl AsyncFileSystem for TiFs {
     #[tracing::instrument]
     async fn init(&self, gid: u32, uid: u32, config: &mut KernelConfig) -> Result<()> {
-        config.add_capabilities(fuser::consts::FUSE_POSIX_LOCKS);
+        config.add_capabilities(fuser::consts::FUSE_POSIX_LOCKS).expect("kernel config failed to add cap_fuse");
         self.with_txn(move |fs, txn| {
             Box::pin(async move {
                 info!("initializing tifs on {:?} ...", &fs.pd_endpoints);
