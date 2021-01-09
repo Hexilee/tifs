@@ -11,11 +11,11 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use fuser::consts::FOPEN_DIRECT_IO;
 use fuser::*;
-use libc::{O_DIRECT, SEEK_CUR, SEEK_END, SEEK_SET};
+use libc::{O_DIRECT, SEEK_CUR, SEEK_END, SEEK_SET, F_RDLCK, F_WRLCK, F_UNLCK, LOCK_SH, LOCK_EX, LOCK_UN, LOCK_NB};
 use tikv_client::{Config, TransactionClient};
 use tracing::{debug, info, instrument, trace};
 
-use super::async_fs::AsyncFileSystem;
+use super::{async_fs::AsyncFileSystem, reply::Lock};
 use super::dir::Directory;
 use super::error::{FsError, Result};
 use super::file_handler::{FileHandler, FileHub};
@@ -629,4 +629,46 @@ impl AsyncFileSystem for TiFs {
             0,
         ))
     }
+
+
+
+    #[tracing::instrument]
+    async fn setlk(
+        &self,
+        ino: u64,
+        fh: u64,
+        lock_owner: u64,
+        start: u64,
+        end: u64,
+        typ: i32,
+        pid: u32,
+        sleep: bool,
+    ) -> Result<()> {
+        // let handler = self.read_fh(ino, fh).await?;
+
+        // self.with_txn(move |_, txn| {
+        //     Box::pin(async move { 
+                
+        //         Ok(()) 
+        //     })
+        // })
+        // .await?;
+        
+        Ok(())
+    }
+
+    #[tracing::instrument]
+    async fn getlk(
+        &self,
+        ino: u64,
+        fh: u64,
+        lock_owner: u64,
+        start: u64,
+        end: u64,
+        typ: i32,
+        pid: u32,
+    ) -> Result<Lock> {
+        Ok(Lock::_new(0,0,0,0))
+    }
+
 }
