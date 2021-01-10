@@ -514,10 +514,11 @@ checksum = "3dcaa9ae7725d12cdb85b3ad99a434db70b468c09ded17e012d86b5c1010f7a7"
 [[package]]
 name = "fuser"
 version = "0.6.0"
-source = "git+https://github.com/yzyDavid/fuser.git#e13b01ca809560e3437489899cf332d18317e407"
+source = "git+https://github.com/cberner/fuser.git#c8506d0ba323041fb9b54a7d23b54f96ddb099df"
 dependencies = [
  "libc",
  "log",
+ "page_size",
  "serde",
  "users",
 ]
@@ -1214,6 +1215,16 @@ dependencies = [
  "libc",
  "pkg-config",
  "vcpkg",
+]
+
+[[package]]
+name = "page_size"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eebde548fbbf1ea81a99b128872779c437752fb99f217c45245e1a61dcd9edcd"
+dependencies = [
+ "libc",
+ "winapi 0.3.9",
 ]
 
 [[package]]
