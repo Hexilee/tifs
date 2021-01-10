@@ -51,6 +51,9 @@ pub enum FsError {
 
     #[error("unknown error({0})")]
     UnknownError(String),
+
+    #[error("invalid lock")]
+    InvalidLock,
 }
 
 pub type Result<T> = std::result::Result<T, FsError>;

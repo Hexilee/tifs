@@ -4,12 +4,12 @@ use std::time::SystemTime;
 
 use fuser::{FileAttr, FileType};
 use tikv_client::{Transaction, TransactionClient};
-use tracing::{debug, instrument};
+use tracing::{debug, instrument, trace};
 
 use super::block::empty_block;
 use super::dir::Directory;
 use super::error::{FsError, Result};
-use super::inode::{Inode, LockType, LockState};
+use super::inode::{Inode, LockState};
 use super::key::{ScopedKey, ROOT_INODE};
 use super::meta::Meta;
 use super::mode::{as_file_kind, as_file_perm, make_mode};
@@ -83,7 +83,7 @@ impl Txn {
                 padding: 0,
                 flags: 0,
             },
-        lock_state: LockState::new(HashSet::new(),LockType(LOCK_UN))
+        lock_state: LockState::new(HashSet::new(), LOCK_UN)
     };
 
         debug!("made inode ({:?})", &inode);
@@ -258,7 +258,7 @@ impl Txn {
         attr.ctime = SystemTime::now();
         attr.set_size(attr.size.max(target));
         self.save_inode(&attr.into()).await?;
-        debug!("write data: {}", String::from_utf8_lossy(&data));
+        trace!("write data: {}", String::from_utf8_lossy(&data));
         Ok(size)
     }
 
@@ -294,7 +294,7 @@ impl Txn {
                 inode: ino,
                 block: 0,
             })?;
-        debug!("read data: {}", String::from_utf8_lossy(&data));
+        trace!("read data: {}", String::from_utf8_lossy(&data));
         Directory::deserialize(&data)
     }
 
@@ -306,7 +306,7 @@ impl Txn {
                 inode: ino,
                 block: 0,
             })?;
-        debug!("read data: {}", String::from_utf8_lossy(&data));
+        trace!("read data: {}", String::from_utf8_lossy(&data));
         Directory::deserialize(&data)
     }
 

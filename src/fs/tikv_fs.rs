@@ -6,12 +6,13 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::time::SystemTime;
+use std::collections::HashSet;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
 use fuser::consts::FOPEN_DIRECT_IO;
 use fuser::*;
-use libc::{O_DIRECT, SEEK_CUR, SEEK_END, SEEK_SET};
+use libc::{O_DIRECT, SEEK_CUR, SEEK_END, SEEK_SET, LOCK_UN, LOCK_SH, LOCK_EX};
 use tikv_client::{Config, TransactionClient};
 use tracing::{debug, info, instrument, trace};
 
@@ -19,7 +20,7 @@ use super::{async_fs::AsyncFileSystem, reply::Lock};
 use super::dir::Directory;
 use super::error::{FsError, Result};
 use super::file_handler::{FileHandler, FileHub};
-use super::inode::Inode;
+use super::inode::{Inode, LockState};
 use super::key::{ScopedKey, ROOT_INODE};
 use super::mode::{as_file_perm, make_mode};
 use super::reply::get_time;
@@ -124,9 +125,15 @@ impl TiFs {
     }
 
     async fn read_inode(&self, ino: u64) -> Result<FileAttr> {
-        self.with_txn(move |_, txn| Box::pin(txn.read_inode(ino)))
-            .await
-            .map(Into::into)
+        let ino = self.with_txn(move |_, txn| Box::pin(txn.read_inode(ino)))
+            .await?;
+        Ok(ino.file_attr)
+    }
+
+    async fn read_inode_lock(&self, ino: u64) -> Result<LockState> {
+        let ino = self.with_txn(move |_, txn| Box::pin(txn.read_inode(ino)))
+            .await?;
+        Ok(ino.lock_state)
     }
 
     async fn lookup_file(&self, parent: u64, name: OsString) -> Result<DirItem> {
@@ -645,7 +652,33 @@ impl AsyncFileSystem for TiFs {
         pid: u32,
         sleep: bool,
     ) -> Result<()> {
-        Ok(())
+        println!("lajizhananshuaile:: ino: {} fh: {} lock_owner: {} type: {} pid: {} sleep:{}",ino,fh,lock_owner,typ,pid,sleep);
+        
+        let mut lkstate = self.read_inode_lock(ino).await?;
+        let lk = match typ {
+            LOCK_SH => {
+                if lkstate.lk_type == LOCK_EX {
+                    return Err((FsError::InvalidLock))
+                }
+                lkstate.owner_set.insert(lock_owner);
+                lkstate.lk_type = LOCK_SH;
+                Ok(())
+            },
+            LOCK_EX => {
+                lkstate.owner_set.clear();
+                lkstate.owner_set.insert(lock_owner);
+                lkstate.lk_type = LOCK_EX;
+                Ok(())
+            },
+            LOCK_UN => {
+                lkstate.owner_set.clear();
+                lkstate.lk_type = LOCK_UN;
+                Ok(())
+            },
+            _ => return Err((FsError::InvalidLock)),
+        };
+
+        lk
     }
 
     #[tracing::instrument]
