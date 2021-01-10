@@ -652,8 +652,6 @@ impl AsyncFileSystem for TiFs {
         pid: u32,
         sleep: bool,
     ) -> Result<()> {
-        println!("lajizhananshuaile:: ino: {} fh: {} lock_owner: {} type: {} pid: {} sleep:{}",ino,fh,lock_owner,typ,pid,sleep);
-        
         let mut lkstate = self.read_inode_lock(ino).await?;
         let lk = match typ {
             LOCK_SH => {
