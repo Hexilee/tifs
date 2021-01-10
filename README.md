@@ -18,6 +18,12 @@ Then you can open another shell and play with tifs in `~/mnt`.
 
 Maybe you should enable `user_allow_other` in `/etc/fuse.conf`.
 
+for developing under `FreeBSD`, make sure the following dependencies are met.
+
+```bash
+pkg install llvm protobuf pkgconf fusefs-libs3 cmake
+```
+
 ### Product
 
 ```bash
