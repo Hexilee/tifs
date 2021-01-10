@@ -86,9 +86,11 @@ where
     let mut fuse_options = vec![
         FuseMountOption::FSName(format!("tifs:{}", endpoints.join(","))),
         FuseMountOption::AllowOther,
-        FuseMountOption::AutoUnmount,
         FuseMountOption::DefaultPermissions,
     ];
+
+    #[cfg(target_os = "linux")]
+    fuse_options.push(FuseMountOption::AutoUnmount);
 
     fuse_options.extend(MountOption::to_builtin(options.iter()));
 
