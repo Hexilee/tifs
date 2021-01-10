@@ -4,6 +4,19 @@ pub const fn as_file_perm(mode: u32) -> u16 {
     (mode & !(libc::S_ISUID | libc::S_ISGID) as u32) as _
 }
 
+#[cfg(target_os = "freebsd")]
+pub fn as_file_kind(mode: u32) -> FileType {
+    use FileType::*;
+
+    match mode as u16 & libc::S_IFMT {
+        libc::S_IFREG => RegularFile,
+        libc::S_IFLNK => Symlink,
+        libc::S_IFDIR => Directory,
+        _ => unimplemented!("{}", mode),
+    }
+}
+
+#[cfg(target_os = "linux")]
 pub fn as_file_kind(mode: u32) -> FileType {
     use FileType::*;
 
@@ -15,6 +28,21 @@ pub fn as_file_kind(mode: u32) -> FileType {
     }
 }
 
+#[cfg(target_os = "freebsd")]
+pub fn make_mode(tpy: FileType, perm: u16) -> u32 {
+    use FileType::*;
+
+    let kind = match tpy {
+        RegularFile => libc::S_IFREG,
+        Symlink => libc::S_IFLNK,
+        Directory => libc::S_IFDIR,
+        _ => unimplemented!("{:?}", tpy),
+    };
+
+    kind as u32 | perm as u32
+}
+
+#[cfg(target_os = "linux")]
 pub fn make_mode(tpy: FileType, perm: u16) -> u32 {
     use FileType::*;
 

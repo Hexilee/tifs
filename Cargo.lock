@@ -519,6 +519,7 @@ dependencies = [
  "libc",
  "log",
  "page_size",
+ "pkg-config",
  "serde",
  "users",
 ]

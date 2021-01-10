@@ -99,7 +99,7 @@ impl Into<libc::c_int> for FsError {
             FileNotFound { file: _ } => libc::ENOENT,
             FileExist { file: _ } => libc::EEXIST,
             InodeNotFound { inode: _ } => libc::EFAULT,
-            FhNotFound { fh: _ } => libc::EBADFD,
+            FhNotFound { fh: _ } => libc::EBADF,
             InvalidOffset { ino: _, offset: _ } => libc::EINVAL,
             UnknownWhence { whence: _ } => libc::EINVAL,
             BlockNotFound { inode: _, block: _ } => libc::EINVAL,
