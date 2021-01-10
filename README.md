@@ -24,6 +24,8 @@ for developing under `FreeBSD`, make sure the following dependencies are met.
 pkg install llvm protobuf pkgconf fusefs-libs3 cmake
 ```
 
+for now, `user_allow_other` and `auto unmount` does not work for `FreeBSD`, using as `root` and manually `umount` is needed.
+
 ### Product
 
 ```bash
@@ -103,3 +105,4 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
         - [ ] npm install
         - [x] sqlite
         - [ ] tikv on tifs
+        - [x] client runs on FreeBSD: simple case works
