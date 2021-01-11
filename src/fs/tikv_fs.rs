@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::ffi::OsString;
 use std::fmt::{self, Debug};
 use std::future::Future;
@@ -6,17 +7,15 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::time::SystemTime;
-use std::collections::HashSet;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
 use fuser::consts::FOPEN_DIRECT_IO;
 use fuser::*;
-use libc::{O_DIRECT, SEEK_CUR, SEEK_END, SEEK_SET, LOCK_UN, LOCK_SH, LOCK_EX};
+use libc::{LOCK_EX, LOCK_SH, LOCK_UN, O_DIRECT, SEEK_CUR, SEEK_END, SEEK_SET};
 use tikv_client::{Config, TransactionClient};
 use tracing::{debug, info, instrument, trace};
 
-use super::{async_fs::AsyncFileSystem, reply::Lock};
 use super::dir::Directory;
 use super::error::{FsError, Result};
 use super::file_handler::{FileHandler, FileHub};
@@ -26,6 +25,7 @@ use super::mode::{as_file_perm, make_mode};
 use super::reply::get_time;
 use super::reply::{Attr, Create, Data, Dir, DirItem, Entry, Lseek, Open, StatFs, Write};
 use super::transaction::Txn;
+use super::{async_fs::AsyncFileSystem, reply::Lock};
 use crate::MountOption;
 
 pub struct TiFs {
@@ -34,9 +34,6 @@ pub struct TiFs {
     pub client: TransactionClient,
     pub hub: FileHub,
     pub direct_io: bool,
-    // inode_cache: RwLock<LruCache<u64, Inode>>,
-    // block_cache: RwLock<LruCache<ScopedKey, Vec<u8>>>,
-    // dir_cache: RwLock<LruCache<u64, Directory>>,
 }
 
 type BoxedFuture<'a, T> = Pin<Box<dyn 'a + Send + Future<Output = Result<T>>>>;
@@ -71,9 +68,6 @@ impl TiFs {
                 .iter()
                 .find(|option| matches!(option, MountOption::DirectIO))
                 .is_some(),
-            // inode_cache: RwLock::new(LruCache::new(Self::INODE_CACHE / size_of::<Inode>())),
-            // block_cache: RwLock::new(LruCache::new(Self::BLOCK_CACHE / Self::BLOCK_SIZE)),
-            // dir_cache: RwLock::new(LruCache::new(Self::DIR_CACHE / Self::BLOCK_SIZE)),
         })
     }
 
@@ -125,13 +119,15 @@ impl TiFs {
     }
 
     async fn read_inode(&self, ino: u64) -> Result<FileAttr> {
-        let ino = self.with_txn(move |_, txn| Box::pin(txn.read_inode(ino)))
+        let ino = self
+            .with_txn(move |_, txn| Box::pin(txn.read_inode(ino)))
             .await?;
         Ok(ino.file_attr)
     }
 
     async fn read_inode_lock(&self, ino: u64) -> Result<LockState> {
-        let ino = self.with_txn(move |_, txn| Box::pin(txn.read_inode(ino)))
+        let ino = self
+            .with_txn(move |_, txn| Box::pin(txn.read_inode(ino)))
             .await?;
         Ok(ino.lock_state)
     }
@@ -162,9 +158,12 @@ impl Debug for TiFs {
 impl AsyncFileSystem for TiFs {
     #[tracing::instrument]
     async fn init(&self, gid: u32, uid: u32, config: &mut KernelConfig) -> Result<()> {
-        config.add_capabilities(fuser::consts::FUSE_POSIX_LOCKS).expect("kernel config failed to add cap_fuse FUSE_POSIX_LOCKS");
-        config.add_capabilities(fuser::consts::FUSE_FLOCK_LOCKS).expect("kernel config failed to add cap_fuse FUSE_CAP_FLOCK_LOCKS");
-        
+        config
+            .add_capabilities(fuser::consts::FUSE_POSIX_LOCKS)
+            .expect("kernel config failed to add cap_fuse FUSE_POSIX_LOCKS");
+        config
+            .add_capabilities(fuser::consts::FUSE_FLOCK_LOCKS)
+            .expect("kernel config failed to add cap_fuse FUSE_CAP_FLOCK_LOCKS");
 
         self.with_txn(move |fs, txn| {
             Box::pin(async move {
@@ -641,8 +640,6 @@ impl AsyncFileSystem for TiFs {
         ))
     }
 
-
-
     #[tracing::instrument]
     async fn setlk(
         &self,
@@ -659,28 +656,37 @@ impl AsyncFileSystem for TiFs {
             Box::pin(async move {
                 let mut inode = txn.read_inode_for_update(ino).await?;
                 if inode.file_attr.kind == FileType::Directory {
-                    return Err((FsError::InvalidLock))
+                    return Err((FsError::InvalidLock));
                 }
-
-                let lk = match typ {
-                    LOCK_SH => {
+                match typ {
+                    LOCK_SH => {                      
                         if inode.lock_state.lk_type == LOCK_EX {
-                            return Err((FsError::InvalidLock))
+                            return Err((FsError::InvalidLock));
                         }
                         inode.lock_state.owner_set.insert(lock_owner);
                         inode.lock_state.lk_type = LOCK_SH;
                         txn.save_inode(&inode).await?;
                         Ok(())
-                    },
+                    }
                     LOCK_EX => {
-                        if inode.lock_state.lk_type != LOCK_UN {
-                            return Err((FsError::InvalidLock))
+                        match inode.lock_state.lk_type {
+                            LOCK_SH => {
+                                if inode.lock_state.owner_set.len() == 1 && inode.lock_state.owner_set.get(&lock_owner) == Some(&lock_owner) {
+                                    inode.lock_state.lk_type = LOCK_EX;
+                                    txn.save_inode(&inode).await?;
+                                    return Ok(())
+                                }
+                                Err((FsError::InvalidLock))
+                            },
+                            LOCK_UN => {
+                                inode.lock_state.owner_set.clear();
+                                inode.lock_state.owner_set.insert(lock_owner);
+                                inode.lock_state.lk_type = LOCK_EX;
+                                txn.save_inode(&inode).await?;
+                                Ok(())
+                            },
+                            _ => return Err((FsError::InvalidLock)),
                         }
-                        inode.lock_state.owner_set.clear();
-                        inode.lock_state.owner_set.insert(lock_owner);
-                        inode.lock_state.lk_type = LOCK_EX;
-                        txn.save_inode(&inode).await?;
-                        Ok(())
                     },
                     LOCK_UN => {
                         inode.lock_state.owner_set.remove(&lock_owner);
@@ -689,11 +695,9 @@ impl AsyncFileSystem for TiFs {
                         }
                         txn.save_inode(&inode).await?;
                         Ok(())
-                    },
+                    }
                     _ => return Err((FsError::InvalidLock)),
-                };
-
-                lk
+                }
             })
         })
         .await
@@ -713,10 +717,9 @@ impl AsyncFileSystem for TiFs {
         self.with_txn(move |_, txn| {
             Box::pin(async move {
                 let inode = txn.read_inode(ino).await?;
-                Ok(Lock::_new(0, 0 , inode.lock_state.lk_type, 0))
+                Ok(Lock::_new(0, 0, inode.lock_state.lk_type, 0))
             })
-    })
-    .await
+        })
+        .await
     }
-
 }
