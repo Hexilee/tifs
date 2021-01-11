@@ -162,7 +162,10 @@ impl Debug for TiFs {
 impl AsyncFileSystem for TiFs {
     #[tracing::instrument]
     async fn init(&self, gid: u32, uid: u32, config: &mut KernelConfig) -> Result<()> {
-        config.add_capabilities(fuser::consts::FUSE_POSIX_LOCKS).expect("kernel config failed to add cap_fuse");
+        config.add_capabilities(fuser::consts::FUSE_POSIX_LOCKS).expect("kernel config failed to add cap_fuse FUSE_POSIX_LOCKS");
+        config.add_capabilities(fuser::consts::FUSE_FLOCK_LOCKS).expect("kernel config failed to add cap_fuse FUSE_CAP_FLOCK_LOCKS");
+        
+
         self.with_txn(move |fs, txn| {
             Box::pin(async move {
                 info!("initializing tifs on {:?} ...", &fs.pd_endpoints);
@@ -655,7 +658,10 @@ impl AsyncFileSystem for TiFs {
         self.with_txn(move |_, txn| {
             Box::pin(async move {
                 let mut inode = txn.read_inode_for_update(ino).await?;
-                
+                let directory = txn.read_dir(ino).await?;
+                if directory.into_map().len() > 0 {
+                    return Err((FsError::InvalidLock))
+                }
                 let lk = match typ {
                     LOCK_SH => {
                         if inode.lock_state.lk_type == LOCK_EX {

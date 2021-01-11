@@ -15,7 +15,7 @@ use super::meta::Meta;
 use super::mode::{as_file_kind, as_file_perm, make_mode};
 use super::reply::DirItem;
 use super::tikv_fs::TiFs;
-use libc::{F_RDLCK, F_WRLCK, F_UNLCK, LOCK_SH, LOCK_EX, LOCK_UN, LOCK_NB};
+use libc::{LOCK_SH, LOCK_EX, LOCK_UN, LOCK_NB};
 use std::collections::HashSet;
 pub struct Txn(Transaction);
 
