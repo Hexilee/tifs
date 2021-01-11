@@ -15,7 +15,11 @@ use super::meta::Meta;
 use super::mode::{as_file_kind, as_file_perm, make_mode};
 use super::reply::DirItem;
 use super::tikv_fs::TiFs;
+<<<<<<< HEAD
 use libc::LOCK_UN;
+=======
+use libc::{LOCK_EX, LOCK_NB, LOCK_SH, LOCK_UN};
+>>>>>>> f70c269ae6a18415a8b46d5940f8a0abfc891356
 use std::collections::HashSet;
 pub struct Txn(Transaction);
 
