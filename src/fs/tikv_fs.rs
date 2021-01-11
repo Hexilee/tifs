@@ -318,7 +318,7 @@ impl AsyncFileSystem for TiFs {
         Ok(Data::new(data))
     }
 
-    #[tracing::instrument]
+    #[tracing::instrument(skip(data))]
     async fn write(
         &self,
         ino: u64,
