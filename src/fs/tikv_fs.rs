@@ -652,31 +652,45 @@ impl AsyncFileSystem for TiFs {
         pid: u32,
         sleep: bool,
     ) -> Result<()> {
-        let mut lkstate = self.read_inode_lock(ino).await?;
-        let lk = match typ {
-            LOCK_SH => {
-                if lkstate.lk_type == LOCK_EX {
-                    return Err((FsError::InvalidLock))
-                }
-                lkstate.owner_set.insert(lock_owner);
-                lkstate.lk_type = LOCK_SH;
-                Ok(())
-            },
-            LOCK_EX => {
-                lkstate.owner_set.clear();
-                lkstate.owner_set.insert(lock_owner);
-                lkstate.lk_type = LOCK_EX;
-                Ok(())
-            },
-            LOCK_UN => {
-                lkstate.owner_set.clear();
-                lkstate.lk_type = LOCK_UN;
-                Ok(())
-            },
-            _ => return Err((FsError::InvalidLock)),
-        };
+        self.with_txn(move |_, txn| {
+            Box::pin(async move {
+                let mut inode = txn.read_inode_for_update(ino).await?;
+                
+                let lk = match typ {
+                    LOCK_SH => {
+                        if inode.lock_state.lk_type == LOCK_EX {
+                            return Err((FsError::InvalidLock))
+                        }
+                        inode.lock_state.owner_set.insert(lock_owner);
+                        inode.lock_state.lk_type = LOCK_SH;
+                        txn.save_inode(&inode).await?;
+                        Ok(())
+                    },
+                    LOCK_EX => {
+                        if inode.lock_state.lk_type != LOCK_UN {
+                            return Err((FsError::InvalidLock))
+                        }
+                        inode.lock_state.owner_set.clear();
+                        inode.lock_state.owner_set.insert(lock_owner);
+                        inode.lock_state.lk_type = LOCK_EX;
+                        txn.save_inode(&inode).await?;
+                        Ok(())
+                    },
+                    LOCK_UN => {
+                        inode.lock_state.owner_set.remove(&lock_owner);
+                        if inode.lock_state.owner_set.is_empty() {
+                            inode.lock_state.lk_type = LOCK_UN;
+                        }
+                        txn.save_inode(&inode).await?;
+                        Ok(())
+                    },
+                    _ => return Err((FsError::InvalidLock)),
+                };
 
-        lk
+                lk
+            })
+        })
+        .await
     }
 
     #[tracing::instrument]
@@ -690,7 +704,13 @@ impl AsyncFileSystem for TiFs {
         typ: i32,
         pid: u32,
     ) -> Result<Lock> {
-        Ok(Lock::_new(0,0,0,0))
+        self.with_txn(move |_, txn| {
+            Box::pin(async move {
+                let inode = txn.read_inode(ino).await?;
+                Ok(Lock::_new(0, 0 , inode.lock_state.lk_type, 0))
+            })
+    })
+    .await
     }
 
 }
