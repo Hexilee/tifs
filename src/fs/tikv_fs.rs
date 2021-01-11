@@ -658,10 +658,10 @@ impl AsyncFileSystem for TiFs {
         self.with_txn(move |_, txn| {
             Box::pin(async move {
                 let mut inode = txn.read_inode_for_update(ino).await?;
-                let directory = txn.read_dir(ino).await?;
-                if directory.into_map().len() > 0 {
+                if inode.file_attr.kind == FileType::Directory {
                     return Err((FsError::InvalidLock))
                 }
+
                 let lk = match typ {
                     LOCK_SH => {
                         if inode.lock_state.lk_type == LOCK_EX {
