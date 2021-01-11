@@ -34,9 +34,6 @@ pub struct TiFs {
     pub client: TransactionClient,
     pub hub: FileHub,
     pub direct_io: bool,
-    // inode_cache: RwLock<LruCache<u64, Inode>>,
-    // block_cache: RwLock<LruCache<ScopedKey, Vec<u8>>>,
-    // dir_cache: RwLock<LruCache<u64, Directory>>,
 }
 
 type BoxedFuture<'a, T> = Pin<Box<dyn 'a + Send + Future<Output = Result<T>>>>;
@@ -71,9 +68,6 @@ impl TiFs {
                 .iter()
                 .find(|option| matches!(option, MountOption::DirectIO))
                 .is_some(),
-            // inode_cache: RwLock::new(LruCache::new(Self::INODE_CACHE / size_of::<Inode>())),
-            // block_cache: RwLock::new(LruCache::new(Self::BLOCK_CACHE / Self::BLOCK_SIZE)),
-            // dir_cache: RwLock::new(LruCache::new(Self::DIR_CACHE / Self::BLOCK_SIZE)),
         })
     }
 

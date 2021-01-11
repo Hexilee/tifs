@@ -1,23 +1,23 @@
-use fuser::FileAttr;
-use serde::{Deserialize, Serialize};
-use std::ops::{Deref, DerefMut};
-use libc::{LOCK_UN};
 use super::error::{FsError, Result};
 use super::serialize::{deserialize, serialize, ENCODING};
 use super::tikv_fs::TiFs;
+use fuser::FileAttr;
+use libc::LOCK_UN;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-
+use std::ops::{Deref, DerefMut};
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct LockState {
     pub owner_set: HashSet<u64>,
-    pub lk_type: i32
+    pub lk_type: i32,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Inode {
     pub file_attr: FileAttr,
-    pub lock_state: LockState
+    pub lock_state: LockState,
+    pub inline_content: Vec<u8>,
 }
 
 impl Inode {
@@ -49,7 +49,11 @@ impl Inode {
 
 impl From<FileAttr> for Inode {
     fn from(attr: FileAttr) -> Self {
-        Inode{file_attr:attr, lock_state: LockState::new(HashSet::new(), LOCK_UN)}
+        Inode {
+            file_attr: attr,
+            lock_state: LockState::new(HashSet::new(), LOCK_UN),
+            inline_content: vec!(),
+        }
     }
 }
 
@@ -81,9 +85,6 @@ impl DerefMut for Inode {
 
 impl LockState {
     pub fn new(owner_set: HashSet<u64>, lk_type: i32) -> LockState {
-        LockState{
-            owner_set,
-            lk_type
-        }
+        LockState { owner_set, lk_type }
     }
 }
