@@ -17,7 +17,7 @@ pub struct LockState {
 pub struct Inode {
     pub file_attr: FileAttr,
     pub lock_state: LockState,
-    pub inline_content: Vec<u8>,
+    pub inline_data: Option<Vec<u8>>,
 }
 
 impl Inode {
@@ -52,7 +52,7 @@ impl From<FileAttr> for Inode {
         Inode {
             file_attr: attr,
             lock_state: LockState::new(HashSet::new(), LOCK_UN),
-            inline_content: vec!(),
+            inline_data: None,
         }
     }
 }

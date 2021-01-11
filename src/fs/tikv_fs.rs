@@ -45,6 +45,7 @@ impl TiFs {
     pub const DIR_CACHE: usize = 1 << 24;
     pub const INODE_CACHE: usize = 1 << 24;
     pub const MAX_NAME_LEN: u32 = 1 << 8;
+    pub const INLINE_DATA_THRESHOLD: u64 = 1 << 16;
 
     #[instrument]
     pub async fn construct<S>(
@@ -714,6 +715,7 @@ impl AsyncFileSystem for TiFs {
         typ: i32,
         pid: u32,
     ) -> Result<Lock> {
+        // TODO: read only operation need not txn?
         self.with_txn(move |_, txn| {
             Box::pin(async move {
                 let inode = txn.read_inode(ino).await?;
