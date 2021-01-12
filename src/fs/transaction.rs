@@ -162,7 +162,9 @@ impl Txn {
 
         let inlined = inode.inline_data.as_mut().unwrap();
         inlined.reserve(start + size);
-        inlined.resize(start + size, 0);
+        if start + size > inlined.len() {
+            inlined.resize(start + size, 0);
+        }
         inlined[start ..start + size].copy_from_slice(data);
 
         inode.atime = SystemTime::now();
@@ -181,9 +183,13 @@ impl Txn {
         let size = size as usize;
 
         let inlined = inode.inline_data.as_ref().unwrap();
+        assert!(inode.size as usize == inlined.len());
         let mut data: Vec<u8> = Vec::with_capacity(size);
         data.resize(size, 0);
-        data.copy_from_slice(&inlined[start..start + size]);
+        if inlined.len() > start {
+            let to_copy = size.min(inlined.len() - start);
+            data[..to_copy].copy_from_slice(&inlined[start..start + to_copy]);
+        }
 
         inode.atime = SystemTime::now();
         self.save_inode(inode).await?;
@@ -329,6 +335,9 @@ impl Txn {
     }
 
     pub async fn fallocate(&mut self, inode: &mut Inode, offset: i64, length: i64) -> Result<()> {
+        if inode.inline_data.is_some() {
+                self.transfer_inline_data_to_block(inode).await?;
+        }
         let target_size = (offset + length) as u64;
         if target_size > inode.size {
             inode.set_size(target_size);
