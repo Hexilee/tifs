@@ -151,6 +151,34 @@ impl Txn {
         Ok(())
     }
 
+    async fn write_inline_data(&mut self, inode: &mut Inode, start: u64, data: &Vec<u8>) -> Result<usize> {
+        assert!(inode.size <= TiFs::INLINE_DATA_THRESHOLD);
+        let size = data.len() as u64;
+        assert!(start + size <= TiFs::INLINE_DATA_THRESHOLD);
+
+        let size = data.len();
+        let start = start as usize;
+
+        let inlined = inode.inline_data.as_mut().unwrap();
+        inlined.reserve(start + size);
+        inlined[start ..start + size].copy_from_slice(data);
+        self.save_inode(inode).await?;
+        Ok(size)
+    }
+
+    fn read_inline_data(&self, inode: &Inode, start: u64, size: u64) -> Result<Vec<u8>> {
+        assert!(inode.size <= TiFs::INLINE_DATA_THRESHOLD);
+
+        let start = start as usize;
+        let size = size as usize;
+
+        let inlined = inode.inline_data.as_ref().unwrap();
+        let mut data: Vec<u8> = Vec::with_capacity(size);
+        data.resize(size, 0);
+        data.copy_from_slice(&inlined[start..start + size]);
+        Ok(data)
+    }
+
     pub async fn read_data(
         &mut self,
         ino: u64,
@@ -164,6 +192,11 @@ impl Txn {
 
         let max_size = attr.size - start;
         let size = chunk_size.unwrap_or(max_size).min(max_size);
+
+        if attr.inline_data.is_some() {
+            return self.read_inline_data(&attr, start, size);
+        }
+
         let target = start + size;
         let start_block = start / TiFs::BLOCK_SIZE;
         let end_block = (target + TiFs::BLOCK_SIZE - 1) / TiFs::BLOCK_SIZE;
@@ -224,9 +257,17 @@ impl Txn {
 
     pub async fn write_data(&mut self, ino: u64, start: u64, data: Vec<u8>) -> Result<usize> {
         debug!("write data at ({})[{}]", ino, start);
-        let mut attr = self.read_inode(ino).await?;
+        let mut inode = self.read_inode(ino).await?;
         let size = data.len();
         let target = start + size as u64;
+
+        if inode.inline_data.is_some() {
+            if target > TiFs::INLINE_DATA_THRESHOLD {
+                self.transfer_inline_data_to_block(&mut inode).await?;
+            } else {
+                return self.write_inline_data(&mut inode, start, &data).await;
+            }
+        }
 
         let mut block_index = start / TiFs::BLOCK_SIZE;
         let start_key = ScopedKey::new(ino, block_index).scoped();
@@ -263,11 +304,11 @@ impl Txn {
             rest = current_rest;
         }
 
-        attr.atime = SystemTime::now();
-        attr.mtime = SystemTime::now();
-        attr.ctime = SystemTime::now();
-        attr.set_size(attr.size.max(target));
-        self.save_inode(&attr.into()).await?;
+        inode.atime = SystemTime::now();
+        inode.mtime = SystemTime::now();
+        inode.ctime = SystemTime::now();
+        inode.set_size(inode.size.max(target));
+        self.save_inode(&inode.into()).await?;
         trace!("write data: {}", String::from_utf8_lossy(&data));
         Ok(size)
     }
