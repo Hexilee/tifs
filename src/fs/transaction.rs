@@ -145,7 +145,8 @@ impl Txn {
     async fn transfer_inline_data_to_block(&mut self, inode: &mut Inode) -> Result<()> {
         assert!(inode.size <= TiFs::INLINE_DATA_THRESHOLD);
         let key = ScopedKey::new(inode.ino, 0).scoped();
-        let data = inode.inline_data.clone().unwrap();
+        let mut data = inode.inline_data.clone().unwrap();
+        data.resize(TiFs::BLOCK_SIZE as usize, 0);
         self.put(key, data).await?;
         inode.inline_data = None;
         Ok(())
