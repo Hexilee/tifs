@@ -4,7 +4,7 @@ use std::time::SystemTime;
 
 use fuser::{FileAttr, FileType};
 use tikv_client::{Transaction, TransactionClient};
-use tracing::{debug, instrument, trace};
+use tracing::{debug, trace};
 
 use super::block::empty_block;
 use super::dir::Directory;

@@ -1,11 +1,9 @@
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 
-use fuser::FileType;
 use serde::{Deserialize, Serialize};
 
 use super::error::{FsError, Result};
-use super::key::ROOT_INODE;
 use super::reply::DirItem;
 use super::serialize::{deserialize, serialize, ENCODING};
 
