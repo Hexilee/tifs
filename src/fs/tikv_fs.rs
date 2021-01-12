@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::ffi::OsString;
 use std::fmt::{self, Debug};
 use std::future::Future;

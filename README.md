@@ -70,7 +70,7 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
     - [x] rename
     - [x] link
     - [x] statfs ???
-    - [ ] access
+    - [ ] access !
     - [x] create
     - [x] fallocate
     - [ ] getlk

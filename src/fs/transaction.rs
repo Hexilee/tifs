@@ -161,12 +161,19 @@ impl Txn {
 
         let inlined = inode.inline_data.as_mut().unwrap();
         inlined.reserve(start + size);
+        inlined.resize(start + size, 0);
         inlined[start ..start + size].copy_from_slice(data);
+
+        inode.atime = SystemTime::now();
+        inode.mtime = SystemTime::now();
+        inode.ctime = SystemTime::now();
+        inode.set_size(inode.size.max((start + size) as u64));
         self.save_inode(inode).await?;
+
         Ok(size)
     }
 
-    fn read_inline_data(&self, inode: &Inode, start: u64, size: u64) -> Result<Vec<u8>> {
+    async fn read_inline_data(&mut self, inode: &mut Inode, start: u64, size: u64) -> Result<Vec<u8>> {
         assert!(inode.size <= TiFs::INLINE_DATA_THRESHOLD);
 
         let start = start as usize;
@@ -176,6 +183,10 @@ impl Txn {
         let mut data: Vec<u8> = Vec::with_capacity(size);
         data.resize(size, 0);
         data.copy_from_slice(&inlined[start..start + size]);
+
+        inode.atime = SystemTime::now();
+        self.save_inode(inode).await?;
+
         Ok(data)
     }
 
@@ -194,7 +205,7 @@ impl Txn {
         let size = chunk_size.unwrap_or(max_size).min(max_size);
 
         if attr.inline_data.is_some() {
-            return self.read_inline_data(&attr, start, size);
+            return self.read_inline_data(&mut attr, start, size).await;
         }
 
         let target = start + size;
@@ -261,12 +272,15 @@ impl Txn {
         let size = data.len();
         let target = start + size as u64;
 
-        if inode.inline_data.is_some() {
-            if target > TiFs::INLINE_DATA_THRESHOLD {
+        if inode.inline_data.is_some() && target > TiFs::INLINE_DATA_THRESHOLD {
                 self.transfer_inline_data_to_block(&mut inode).await?;
-            } else {
-                return self.write_inline_data(&mut inode, start, &data).await;
+        }
+
+        if (inode.inline_data.is_some() || inode.size == 0) && target <= TiFs::INLINE_DATA_THRESHOLD {
+            if inode.size == 0 {
+                inode.inline_data = Some(Vec::new());
             }
+            return self.write_inline_data(&mut inode, start, &data).await;
         }
 
         let mut block_index = start / TiFs::BLOCK_SIZE;
