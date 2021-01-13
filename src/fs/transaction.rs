@@ -143,7 +143,7 @@ impl Txn {
     }
 
     async fn transfer_inline_data_to_block(&mut self, inode: &mut Inode) -> Result<()> {
-        assert!(inode.size <= TiFs::INLINE_DATA_THRESHOLD);
+        debug_assert!(inode.size <= TiFs::INLINE_DATA_THRESHOLD);
         let key = ScopedKey::new(inode.ino, 0).scoped();
         let mut data = inode.inline_data.clone().unwrap();
         data.resize(TiFs::BLOCK_SIZE as usize, 0);
@@ -187,13 +187,13 @@ impl Txn {
         start: u64,
         size: u64,
     ) -> Result<Vec<u8>> {
-        assert!(inode.size <= TiFs::INLINE_DATA_THRESHOLD);
+        debug_assert!(inode.size <= TiFs::INLINE_DATA_THRESHOLD);
 
         let start = start as usize;
         let size = size as usize;
 
         let inlined = inode.inline_data.as_ref().unwrap();
-        assert!(inode.size as usize == inlined.len());
+        debug_assert!(inode.size as usize == inlined.len());
         let mut data: Vec<u8> = Vec::with_capacity(size);
         data.resize(size, 0);
         if inlined.len() > start {
@@ -285,7 +285,7 @@ impl Txn {
 
     pub async fn write_data(&mut self, ino: u64, start: u64, data: Vec<u8>) -> Result<usize> {
         debug!("write data at ({})[{}]", ino, start);
-        let mut inode = self.read_inode(ino).await?;
+        let mut inode = self.read_inode_for_update(ino).await?;
         let size = data.len();
         let target = start + size as u64;
 
