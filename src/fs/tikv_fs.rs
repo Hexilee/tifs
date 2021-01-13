@@ -583,6 +583,7 @@ impl AsyncFileSystem for TiFs {
         .await
     }
 
+    #[tracing::instrument]
     async fn fallocate(
         &self,
         ino: u64,

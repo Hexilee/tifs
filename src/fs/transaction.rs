@@ -343,15 +343,25 @@ impl Txn {
     }
 
     pub async fn fallocate(&mut self, inode: &mut Inode, offset: i64, length: i64) -> Result<()> {
-        if inode.inline_data.is_some() {
-            self.transfer_inline_data_to_block(inode).await?;
-        }
         let target_size = (offset + length) as u64;
-        if target_size > inode.size {
-            inode.set_size(target_size);
-            inode.mtime = SystemTime::now();
-            self.save_inode(inode).await?;
+        if target_size <= inode.size {
+            return Ok(())
         }
+
+        if inode.inline_data.is_some() {
+            if target_size <= TiFs::INLINE_DATA_THRESHOLD {
+                let original_size = inode.size;
+                let data = vec![0; (target_size-original_size) as usize];
+                self.write_inline_data(inode, original_size, &data).await?;
+                return Ok(())
+            } else {
+                self.transfer_inline_data_to_block(inode).await?;
+            }
+        }
+        
+        inode.set_size(target_size);
+        inode.mtime = SystemTime::now();
+        self.save_inode(inode).await?;
         Ok(())
     }
 
