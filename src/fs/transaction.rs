@@ -152,7 +152,12 @@ impl Txn {
         Ok(())
     }
 
-    async fn write_inline_data(&mut self, inode: &mut Inode, start: u64, data: &Vec<u8>) -> Result<usize> {
+    async fn write_inline_data(
+        &mut self,
+        inode: &mut Inode,
+        start: u64,
+        data: &Vec<u8>,
+    ) -> Result<usize> {
         assert!(inode.size <= TiFs::INLINE_DATA_THRESHOLD);
         let size = data.len() as u64;
         assert!(start + size <= TiFs::INLINE_DATA_THRESHOLD);
@@ -165,7 +170,7 @@ impl Txn {
         if start + size > inlined.len() {
             inlined.resize(start + size, 0);
         }
-        inlined[start ..start + size].copy_from_slice(data);
+        inlined[start..start + size].copy_from_slice(data);
 
         inode.atime = SystemTime::now();
         inode.mtime = SystemTime::now();
@@ -176,7 +181,12 @@ impl Txn {
         Ok(size)
     }
 
-    async fn read_inline_data(&mut self, inode: &mut Inode, start: u64, size: u64) -> Result<Vec<u8>> {
+    async fn read_inline_data(
+        &mut self,
+        inode: &mut Inode,
+        start: u64,
+        size: u64,
+    ) -> Result<Vec<u8>> {
         assert!(inode.size <= TiFs::INLINE_DATA_THRESHOLD);
 
         let start = start as usize;
@@ -280,10 +290,11 @@ impl Txn {
         let target = start + size as u64;
 
         if inode.inline_data.is_some() && target > TiFs::INLINE_DATA_THRESHOLD {
-                self.transfer_inline_data_to_block(&mut inode).await?;
+            self.transfer_inline_data_to_block(&mut inode).await?;
         }
 
-        if (inode.inline_data.is_some() || inode.size == 0) && target <= TiFs::INLINE_DATA_THRESHOLD {
+        if (inode.inline_data.is_some() || inode.size == 0) && target <= TiFs::INLINE_DATA_THRESHOLD
+        {
             if inode.size == 0 {
                 inode.inline_data = Some(Vec::new());
             }
@@ -336,7 +347,7 @@ impl Txn {
 
     pub async fn fallocate(&mut self, inode: &mut Inode, offset: i64, length: i64) -> Result<()> {
         if inode.inline_data.is_some() {
-                self.transfer_inline_data_to_block(inode).await?;
+            self.transfer_inline_data_to_block(inode).await?;
         }
         let target_size = (offset + length) as u64;
         if target_size > inode.size {

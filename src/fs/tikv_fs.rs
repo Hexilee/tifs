@@ -659,7 +659,7 @@ impl AsyncFileSystem for TiFs {
                     return Err((FsError::InvalidLock));
                 }
                 match typ {
-                    LOCK_SH => {                      
+                    LOCK_SH => {
                         if inode.lock_state.lk_type == LOCK_EX {
                             return Err((FsError::InvalidLock));
                         }
@@ -668,25 +668,25 @@ impl AsyncFileSystem for TiFs {
                         txn.save_inode(&inode).await?;
                         Ok(())
                     }
-                    LOCK_EX => {
-                        match inode.lock_state.lk_type {
-                            LOCK_SH => {
-                                if inode.lock_state.owner_set.len() == 1 && inode.lock_state.owner_set.get(&lock_owner) == Some(&lock_owner) {
-                                    inode.lock_state.lk_type = LOCK_EX;
-                                    txn.save_inode(&inode).await?;
-                                    return Ok(())
-                                }
-                                Err((FsError::InvalidLock))
-                            },
-                            LOCK_UN => {
-                                inode.lock_state.owner_set.clear();
-                                inode.lock_state.owner_set.insert(lock_owner);
+                    LOCK_EX => match inode.lock_state.lk_type {
+                        LOCK_SH => {
+                            if inode.lock_state.owner_set.len() == 1
+                                && inode.lock_state.owner_set.get(&lock_owner) == Some(&lock_owner)
+                            {
                                 inode.lock_state.lk_type = LOCK_EX;
                                 txn.save_inode(&inode).await?;
-                                Ok(())
-                            },
-                            _ => return Err((FsError::InvalidLock)),
+                                return Ok(());
+                            }
+                            Err((FsError::InvalidLock))
                         }
+                        LOCK_UN => {
+                            inode.lock_state.owner_set.clear();
+                            inode.lock_state.owner_set.insert(lock_owner);
+                            inode.lock_state.lk_type = LOCK_EX;
+                            txn.save_inode(&inode).await?;
+                            Ok(())
+                        }
+                        _ => return Err((FsError::InvalidLock)),
                     },
                     LOCK_UN => {
                         inode.lock_state.owner_set.remove(&lock_owner);
