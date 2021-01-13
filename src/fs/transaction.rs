@@ -156,17 +156,16 @@ impl Txn {
         &mut self,
         inode: &mut Inode,
         start: u64,
-        data: &Vec<u8>,
+        data: &[u8],
     ) -> Result<usize> {
-        assert!(inode.size <= TiFs::INLINE_DATA_THRESHOLD);
+        debug_assert!(inode.size <= TiFs::INLINE_DATA_THRESHOLD);
         let size = data.len() as u64;
-        assert!(start + size <= TiFs::INLINE_DATA_THRESHOLD);
+        debug_assert!(start + size <= TiFs::INLINE_DATA_THRESHOLD);
 
         let size = data.len();
         let start = start as usize;
 
-        let inlined = inode.inline_data.as_mut().unwrap();
-        inlined.reserve(start + size);
+        let mut inlined = inode.inline_data.take().unwrap_or_else(Vec::new);
         if start + size > inlined.len() {
             inlined.resize(start + size, 0);
         }
@@ -175,7 +174,8 @@ impl Txn {
         inode.atime = SystemTime::now();
         inode.mtime = SystemTime::now();
         inode.ctime = SystemTime::now();
-        inode.set_size(inode.size.max((start + size) as u64));
+        inode.set_size(inlined.len() as u64);
+        inode.inline_data = Some(inlined);
         self.save_inode(inode).await?;
 
         Ok(size)
@@ -295,9 +295,6 @@ impl Txn {
 
         if (inode.inline_data.is_some() || inode.size == 0) && target <= TiFs::INLINE_DATA_THRESHOLD
         {
-            if inode.size == 0 {
-                inode.inline_data = Some(Vec::new());
-            }
             return self.write_inline_data(&mut inode, start, &data).await;
         }
 
