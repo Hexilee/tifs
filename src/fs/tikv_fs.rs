@@ -520,7 +520,7 @@ impl AsyncFileSystem for TiFs {
                         file: name.to_string(),
                     }),
                     Some(mut item) => {
-                        txn.save_dir(newparent, &dir).await?;
+                        txn.save_dir(parent, &dir).await?;
 
                         let mut new_dir = if parent == newparent {
                             dir
