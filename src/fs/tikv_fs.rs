@@ -125,13 +125,6 @@ impl TiFs {
         Ok(ino.file_attr)
     }
 
-    async fn read_inode_lock(&self, ino: u64) -> Result<LockState> {
-        let ino = self
-            .with_txn(move |_, txn| Box::pin(txn.read_inode(ino)))
-            .await?;
-        Ok(ino.lock_state)
-    }
-
     async fn lookup_file(&self, parent: u64, name: OsString) -> Result<DirItem> {
         // TODO: use cache
 
@@ -406,7 +399,6 @@ impl AsyncFileSystem for TiFs {
 
     #[tracing::instrument]
     async fn access(&self, ino: u64, mask: i32) -> Result<()> {
-        let attr = self.read_inode(ino).await?;
         Ok(())
     }
 

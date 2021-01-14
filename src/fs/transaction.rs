@@ -36,9 +36,7 @@ impl Txn {
         gid: u32,
         uid: u32,
     ) -> Result<Inode> {
-        let mut meta = self.read_meta_for_update().await?.unwrap_or_else(|| Meta {
-            inode_next: ROOT_INODE,
-        });
+        let mut meta = self.read_meta_for_update().await?;
         let ino = meta.inode_next;
         meta.inode_next += 1;
 
@@ -102,10 +100,12 @@ impl Txn {
     }
 
     pub async fn read_inode_for_update(&mut self, ino: u64) -> Result<Inode> {
-        let value = self
-            .get_for_update(ScopedKey::inode(ino).scoped())
-            .await?
-            .ok_or_else(|| FsError::InodeNotFound { inode: ino })?;
+        let value = self.get_for_update(ScopedKey::inode(ino).scoped()).await?;
+
+        if value.is_empty() {
+            return Err(FsError::InodeNotFound { inode: ino });
+        }
+
         Ok(Inode::deserialize(&value)?)
     }
 
@@ -131,9 +131,15 @@ impl Txn {
         opt_data.map(|data| Meta::deserialize(&data)).transpose()
     }
 
-    pub async fn read_meta_for_update(&mut self) -> Result<Option<Meta>> {
+    pub async fn read_meta_for_update(&mut self) -> Result<Meta> {
         let opt_data = self.get_for_update(ScopedKey::meta().scoped()).await?;
-        opt_data.map(|data| Meta::deserialize(&data)).transpose()
+        if opt_data.is_empty() {
+            Ok(Meta {
+                inode_next: ROOT_INODE,
+            })
+        } else {
+            Meta::deserialize(&opt_data)
+        }
     }
 
     pub async fn save_meta(&mut self, meta: &Meta) -> Result<()> {
@@ -306,11 +312,9 @@ impl Txn {
 
         let (first_block, mut rest) = data.split_at(first_block_size.min(data.len()));
 
-        let mut start_value = self
-            .get_for_update(start_key.clone())
-            .await?
-            .unwrap_or_else(empty_block);
+        let mut start_value = self.get_for_update(start_key.clone()).await?;
 
+        start_value.resize(TiFs::BLOCK_SIZE as usize, 0);
         start_value[start_index..start_index + first_block.len()].copy_from_slice(first_block);
 
         self.put(start_key, start_value).await?;
@@ -322,10 +326,8 @@ impl Txn {
                 rest.split_at((TiFs::BLOCK_SIZE as usize).min(rest.len()));
             let mut value = curent_block.to_vec();
             if value.len() < TiFs::BLOCK_SIZE as usize {
-                let mut last_value = self
-                    .get_for_update(key.clone())
-                    .await?
-                    .unwrap_or_else(empty_block);
+                let mut last_value = self.get_for_update(key.clone()).await?;
+                last_value.resize(TiFs::BLOCK_SIZE as usize, 0);
                 last_value[..value.len()].copy_from_slice(&value);
                 value = last_value;
             }
@@ -345,20 +347,20 @@ impl Txn {
     pub async fn fallocate(&mut self, inode: &mut Inode, offset: i64, length: i64) -> Result<()> {
         let target_size = (offset + length) as u64;
         if target_size <= inode.size {
-            return Ok(())
+            return Ok(());
         }
 
         if inode.inline_data.is_some() {
             if target_size <= TiFs::INLINE_DATA_THRESHOLD {
                 let original_size = inode.size;
-                let data = vec![0; (target_size-original_size) as usize];
+                let data = vec![0; (target_size - original_size) as usize];
                 self.write_inline_data(inode, original_size, &data).await?;
-                return Ok(())
+                return Ok(());
             } else {
                 self.transfer_inline_data_to_block(inode).await?;
             }
         }
-        
+
         inode.set_size(target_size);
         inode.mtime = SystemTime::now();
         self.save_inode(inode).await?;
@@ -392,13 +394,15 @@ impl Txn {
     }
 
     pub async fn read_dir_for_update(&mut self, ino: u64) -> Result<Directory> {
-        let data = self
-            .get_for_update(ScopedKey::dir(ino))
-            .await?
-            .ok_or_else(|| FsError::BlockNotFound {
+        let data = self.get_for_update(ScopedKey::dir(ino)).await?;
+
+        if data.is_empty() {
+            return Err(FsError::BlockNotFound {
                 inode: ino,
                 block: 0,
-            })?;
+            });
+        }
+
         trace!("read data: {}", String::from_utf8_lossy(&data));
         Directory::deserialize(&data)
     }
