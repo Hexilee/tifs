@@ -151,12 +151,12 @@ impl Debug for TiFs {
 impl AsyncFileSystem for TiFs {
     #[tracing::instrument]
     async fn init(&self, gid: u32, uid: u32, config: &mut KernelConfig) -> Result<()> {
-        config
-            .add_capabilities(fuser::consts::FUSE_POSIX_LOCKS)
-            .expect("kernel config failed to add cap_fuse FUSE_POSIX_LOCKS");
-        config
-            .add_capabilities(fuser::consts::FUSE_FLOCK_LOCKS)
-            .expect("kernel config failed to add cap_fuse FUSE_CAP_FLOCK_LOCKS");
+        // config
+        //     .add_capabilities(fuser::consts::FUSE_POSIX_LOCKS)
+        //     .expect("kernel config failed to add cap_fuse FUSE_POSIX_LOCKS");
+        // config
+        //     .add_capabilities(fuser::consts::FUSE_FLOCK_LOCKS)
+        //     .expect("kernel config failed to add cap_fuse FUSE_CAP_FLOCK_LOCKS");
 
         self.with_txn(move |fs, txn| {
             Box::pin(async move {
