@@ -11,14 +11,14 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use fuser::consts::FOPEN_DIRECT_IO;
 use fuser::*;
-use libc::{LOCK_EX, LOCK_SH, LOCK_UN, O_DIRECT, SEEK_CUR, SEEK_END, SEEK_SET};
+use libc::{LOCK_EX, LOCK_SH, LOCK_UN, O_DIRECT, SEEK_CUR, SEEK_END, SEEK_SET, F_RDLCK, F_WRLCK, F_UNLCK};
 use tikv_client::{Config, TransactionClient};
 use tracing::{debug, info, instrument, trace};
 
 use super::dir::Directory;
 use super::error::{FsError, Result};
 use super::file_handler::{FileHandler, FileHub};
-use super::inode::{Inode, LockState};
+use super::inode::Inode;
 use super::key::{ScopedKey, ROOT_INODE};
 use super::mode::{as_file_perm, make_mode};
 use super::reply::get_time;
@@ -154,9 +154,9 @@ impl AsyncFileSystem for TiFs {
         // config
         //     .add_capabilities(fuser::consts::FUSE_POSIX_LOCKS)
         //     .expect("kernel config failed to add cap_fuse FUSE_POSIX_LOCKS");
-        // config
-        //     .add_capabilities(fuser::consts::FUSE_FLOCK_LOCKS)
-        //     .expect("kernel config failed to add cap_fuse FUSE_CAP_FLOCK_LOCKS");
+        config
+            .add_capabilities(fuser::consts::FUSE_FLOCK_LOCKS)
+            .expect("kernel config failed to add cap_fuse FUSE_CAP_FLOCK_LOCKS");
 
         self.with_txn(move |fs, txn| {
             Box::pin(async move {
@@ -652,39 +652,39 @@ impl AsyncFileSystem for TiFs {
                     return Err((FsError::InvalidLock));
                 }
                 match typ {
-                    LOCK_SH => {
-                        if inode.lock_state.lk_type == LOCK_EX {
+                    F_RDLCK => {
+                        if inode.lock_state.lk_type == F_WRLCK {
                             return Err((FsError::InvalidLock));
                         }
                         inode.lock_state.owner_set.insert(lock_owner);
-                        inode.lock_state.lk_type = LOCK_SH;
+                        inode.lock_state.lk_type = F_RDLCK;
                         txn.save_inode(&inode).await?;
                         Ok(())
                     }
-                    LOCK_EX => match inode.lock_state.lk_type {
-                        LOCK_SH => {
+                    F_WRLCK => match inode.lock_state.lk_type {
+                        F_RDLCK => {
                             if inode.lock_state.owner_set.len() == 1
                                 && inode.lock_state.owner_set.get(&lock_owner) == Some(&lock_owner)
                             {
-                                inode.lock_state.lk_type = LOCK_EX;
+                                inode.lock_state.lk_type = F_WRLCK;
                                 txn.save_inode(&inode).await?;
                                 return Ok(());
                             }
                             Err((FsError::InvalidLock))
                         }
-                        LOCK_UN => {
+                        F_UNLCK => {
                             inode.lock_state.owner_set.clear();
                             inode.lock_state.owner_set.insert(lock_owner);
-                            inode.lock_state.lk_type = LOCK_EX;
+                            inode.lock_state.lk_type = F_WRLCK;
                             txn.save_inode(&inode).await?;
                             Ok(())
                         }
                         _ => return Err((FsError::InvalidLock)),
                     },
-                    LOCK_UN => {
+                    F_UNLCK => {
                         inode.lock_state.owner_set.remove(&lock_owner);
                         if inode.lock_state.owner_set.is_empty() {
-                            inode.lock_state.lk_type = LOCK_UN;
+                            inode.lock_state.lk_type = F_UNLCK;
                         }
                         txn.save_inode(&inode).await?;
                         Ok(())
@@ -708,12 +708,7 @@ impl AsyncFileSystem for TiFs {
         pid: u32,
     ) -> Result<Lock> {
         // TODO: read only operation need not txn?
-        self.with_txn(move |_, txn| {
-            Box::pin(async move {
-                let inode = txn.read_inode(ino).await?;
-                Ok(Lock::_new(0, 0, inode.lock_state.lk_type, 0))
-            })
-        })
-        .await
+        let inode = txn.read_inode(ino).await?;
+        Ok(Lock::_new(0, 0, inode.lock_state.lk_type, 0))
     }
 }
