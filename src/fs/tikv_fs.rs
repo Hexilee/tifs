@@ -708,7 +708,12 @@ impl AsyncFileSystem for TiFs {
         pid: u32,
     ) -> Result<Lock> {
         // TODO: read only operation need not txn?
-        let inode = txn.read_inode(ino).await?;
-        Ok(Lock::_new(0, 0, inode.lock_state.lk_type, 0))
+        self.with_txn(move |_, txn| {
+            Box::pin(async move {
+                let inode = txn.read_inode(ino).await?;
+                Ok(Lock::_new(0, 0, inode.lock_state.lk_type, 0))
+            })
+        })
+        .await
     }
 }
