@@ -15,7 +15,7 @@ use super::meta::Meta;
 use super::mode::{as_file_kind, as_file_perm, make_mode};
 use super::reply::DirItem;
 use super::tikv_fs::TiFs;
-use libc::LOCK_UN;
+use libc::F_UNLCK;
 use std::collections::HashSet;
 pub struct Txn(Transaction);
 
@@ -81,7 +81,7 @@ impl Txn {
                 padding: 0,
                 flags: 0,
             },
-            lock_state: LockState::new(HashSet::new(), LOCK_UN),
+            lock_state: LockState::new(HashSet::new(), F_UNLCK),
             inline_data: None,
         };
 

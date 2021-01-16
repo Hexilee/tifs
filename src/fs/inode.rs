@@ -2,7 +2,7 @@ use super::error::{FsError, Result};
 use super::serialize::{deserialize, serialize, ENCODING};
 use super::tikv_fs::TiFs;
 use fuser::FileAttr;
-use libc::LOCK_UN;
+use libc::F_UNLCK;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::ops::{Deref, DerefMut};
@@ -51,7 +51,7 @@ impl From<FileAttr> for Inode {
     fn from(attr: FileAttr) -> Self {
         Inode {
             file_attr: attr,
-            lock_state: LockState::new(HashSet::new(), LOCK_UN),
+            lock_state: LockState::new(HashSet::new(), F_UNLCK),
             inline_data: None,
         }
     }
