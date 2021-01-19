@@ -2,6 +2,7 @@ use std::ffi::OsString;
 use std::ops::{Deref, DerefMut};
 use std::time::SystemTime;
 
+use bytes::Bytes;
 use fuser::{FileAttr, FileType};
 use tikv_client::{Transaction, TransactionClient};
 use tracing::{debug, trace};
@@ -289,9 +290,9 @@ impl Txn {
         Ok(clear_size)
     }
 
-    pub async fn write_data(&mut self, ino: u64, start: u64, data: Vec<u8>) -> Result<usize> {
+    pub async fn write_data(&mut self, ino: u64, start: u64, data: Bytes) -> Result<usize> {
         debug!("write data at ({})[{}]", ino, start);
-        let mut inode = self.read_inode_for_update(ino).await?;
+        let mut inode = self.read_inode(ino).await?;
         let size = data.len();
         let target = start + size as u64;
 
@@ -305,29 +306,27 @@ impl Txn {
         }
 
         let mut block_index = start / TiFs::BLOCK_SIZE;
-        let start_key = ScopedKey::new(ino, block_index).scoped();
+        let start_key = ScopedKey::new(ino, block_index);
         let start_index = (start % TiFs::BLOCK_SIZE) as usize;
 
         let first_block_size = TiFs::BLOCK_SIZE as usize - start_index;
 
         let (first_block, mut rest) = data.split_at(first_block_size.min(data.len()));
 
-        let mut start_value = self.get_for_update(start_key.clone()).await?;
+        let mut start_value = self.get(start_key).await?.unwrap_or_else(empty_block);
 
-        start_value.resize(TiFs::BLOCK_SIZE as usize, 0);
         start_value[start_index..start_index + first_block.len()].copy_from_slice(first_block);
 
         self.put(start_key, start_value).await?;
 
         while rest.len() != 0 {
             block_index += 1;
-            let key = ScopedKey::new(ino, block_index).scoped();
+            let key = ScopedKey::new(ino, block_index);
             let (curent_block, current_rest) =
                 rest.split_at((TiFs::BLOCK_SIZE as usize).min(rest.len()));
             let mut value = curent_block.to_vec();
             if value.len() < TiFs::BLOCK_SIZE as usize {
-                let mut last_value = self.get_for_update(key.clone()).await?;
-                last_value.resize(TiFs::BLOCK_SIZE as usize, 0);
+                let mut last_value = self.get(key).await?.unwrap_or_else(empty_block);
                 last_value[..value.len()].copy_from_slice(&value);
                 value = last_value;
             }

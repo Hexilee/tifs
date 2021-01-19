@@ -46,6 +46,12 @@ pub enum FsError {
     #[error("unknown file type")]
     UnknownFileType,
 
+    #[error("key error: {0}")]
+    KeyError(String),
+
+    #[error("excess max retry times: {0}")]
+    RetryTimesExcess(u64),
+
     #[error("strip prefix error")]
     StripPrefixError(#[from] std::path::StripPrefixError),
 
@@ -78,14 +84,18 @@ impl From<std::io::Error> for FsError {
 
 impl From<tikv_client::Error> for FsError {
     fn from(err: tikv_client::Error) -> Self {
-        if let tikv_client::Error::RegionForKeyNotFound { key: key_data } = err {
-            let key: Key = key_data.clone().into();
-            let scoped_key: ScopedKey = key.into();
-            Self::InodeNotFound {
-                inode: scoped_key.key(),
+        use tikv_client::Error::*;
+
+        match err {
+            RegionForKeyNotFound { key: key_data } => {
+                let key: Key = key_data.clone().into();
+                let scoped_key: ScopedKey = key.into();
+                Self::InodeNotFound {
+                    inode: scoped_key.key(),
+                }
             }
-        } else {
-            Self::UnknownError(err.to_string())
+            KeyError(err) => Self::KeyError(format!("{:?}", err)),
+            _ => Self::UnknownError(err.to_string()),
         }
     }
 }
@@ -105,6 +115,8 @@ impl Into<libc::c_int> for FsError {
             BlockNotFound { inode: _, block: _ } => libc::EINVAL,
             DirNotEmpty { dir: _ } => libc::ENOTEMPTY,
             UnknownFileType => libc::EINVAL,
+            KeyError(_) => libc::EAGAIN,
+            RetryTimesExcess(_) => libc::EAGAIN,
             InvalidStr => libc::EINVAL,
             _ => libc::EFAULT,
         }

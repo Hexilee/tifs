@@ -8,7 +8,7 @@ pub const INODE_SCOPE: u64 = 0;
 pub const ROOT_INODE: u64 = fuser::FUSE_ROOT_ID;
 pub const KEY_LEN: usize = size_of::<u64>() * 2;
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Copy)]
 pub struct ScopedKey {
     scope: u64,
     key: u64,

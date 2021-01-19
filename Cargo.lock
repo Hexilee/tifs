@@ -1837,6 +1837,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "bincode",
+ "bytes 1.0.1",
  "clap",
  "fuser",
  "futures 0.3.10",

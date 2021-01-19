@@ -9,6 +9,7 @@ use std::time::SystemTime;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
+use bytes::Bytes;
 use fuser::consts::FOPEN_DIRECT_IO;
 use fuser::*;
 use libc::{F_RDLCK, F_UNLCK, F_WRLCK, O_DIRECT, SEEK_CUR, SEEK_END, SEEK_SET};
@@ -71,13 +72,12 @@ impl TiFs {
         })
     }
 
-    async fn with_pessimistic<F, T>(&self, f: F) -> Result<T>
+    async fn process_txn<F, T>(&self, txn: &mut Txn, f: F) -> Result<T>
     where
         T: 'static + Send,
         F: for<'a> FnOnce(&'a TiFs, &'a mut Txn) -> BoxedFuture<'a, T>,
     {
-        let mut txn = Txn::begin_pessimistic(&self.client).await?;
-        match f(self, &mut txn).await {
+        match f(self, txn).await {
             Ok(v) => {
                 txn.commit().await?;
                 trace!("transaction committed");
@@ -91,6 +91,40 @@ impl TiFs {
         }
     }
 
+    async fn with_pessimistic<F, T>(&self, f: F) -> Result<T>
+    where
+        T: 'static + Send,
+        F: for<'a> FnOnce(&'a TiFs, &'a mut Txn) -> BoxedFuture<'a, T>,
+    {
+        let mut txn = Txn::begin_pessimistic(&self.client).await?;
+        self.process_txn(&mut txn, f).await
+    }
+
+    async fn with_optimistic<F, T>(&self, f: F) -> Result<T>
+    where
+        T: 'static + Send,
+        F: for<'a> FnOnce(&'a TiFs, &'a mut Txn) -> BoxedFuture<'a, T>,
+    {
+        let mut txn = Txn::begin_optimistic(&self.client).await?;
+        self.process_txn(&mut txn, f).await
+    }
+
+    async fn optimistic_retry<F, T>(&self, max_times: Option<u64>, mut f: F) -> Result<T>
+    where
+        T: 'static + Send,
+        F: for<'a> FnMut(&'a TiFs, &'a mut Txn) -> BoxedFuture<'a, T>,
+    {
+        let times = max_times.unwrap_or(std::u64::MAX);
+        for _ in 0..times {
+            match self.with_optimistic(&mut f).await {
+                Ok(v) => return Ok(v),
+                Err(FsError::KeyError(err)) => debug!("{}", err),
+                Err(err) => return Err(err),
+            }
+        }
+        Err(FsError::RetryTimesExcess(times))
+    }
+
     async fn read_fh(&self, ino: u64, fh: u64) -> Result<FileHandler> {
         self.hub
             .get(ino, fh)
@@ -99,18 +133,21 @@ impl TiFs {
     }
 
     async fn read_data(&self, ino: u64, start: u64, chunk_size: Option<u64>) -> Result<Vec<u8>> {
-        self.with_pessimistic(move |_, txn| Box::pin(txn.read_data(ino, start, chunk_size)))
+        self.with_optimistic(move |_, txn| Box::pin(txn.read_data(ino, start, chunk_size)))
             .await
     }
 
     async fn clear_data(&self, ino: u64) -> Result<u64> {
-        self.with_pessimistic(move |_, txn| Box::pin(txn.clear_data(ino)))
+        self.optimistic_retry(None, move |_, txn| Box::pin(txn.clear_data(ino)))
             .await
     }
 
     async fn write_data(&self, ino: u64, start: u64, data: Vec<u8>) -> Result<usize> {
-        self.with_pessimistic(move |_, txn| Box::pin(txn.write_data(ino, start, data)))
-            .await
+        let shared_data: Bytes = data.into();
+        self.optimistic_retry(None, move |_, txn| {
+            Box::pin(txn.write_data(ino, start, shared_data.clone()))
+        })
+        .await
     }
 
     async fn read_dir(&self, ino: u64) -> Result<Directory> {
@@ -607,8 +644,12 @@ impl AsyncFileSystem for TiFs {
                     .await?;
 
                 attr.set_size(
-                    txn.write_data(attr.ino, 0, link.as_os_str().as_bytes().to_vec())
-                        .await? as u64,
+                    txn.write_data(
+                        attr.ino,
+                        0,
+                        Bytes::copy_from_slice(link.as_os_str().as_bytes()),
+                    )
+                    .await? as u64,
                 );
                 txn.save_inode(&attr).await?;
                 Ok(Entry::new(attr.into(), 0))
