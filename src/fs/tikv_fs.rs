@@ -71,7 +71,7 @@ impl TiFs {
         })
     }
 
-    async fn with_txn<F, T>(&self, f: F) -> Result<T>
+    async fn with_pessimistic<F, T>(&self, f: F) -> Result<T>
     where
         T: 'static + Send,
         F: for<'a> FnOnce(&'a TiFs, &'a mut Txn) -> BoxedFuture<'a, T>,
@@ -99,28 +99,28 @@ impl TiFs {
     }
 
     async fn read_data(&self, ino: u64, start: u64, chunk_size: Option<u64>) -> Result<Vec<u8>> {
-        self.with_txn(move |_, txn| Box::pin(txn.read_data(ino, start, chunk_size)))
+        self.with_pessimistic(move |_, txn| Box::pin(txn.read_data(ino, start, chunk_size)))
             .await
     }
 
     async fn clear_data(&self, ino: u64) -> Result<u64> {
-        self.with_txn(move |_, txn| Box::pin(txn.clear_data(ino)))
+        self.with_pessimistic(move |_, txn| Box::pin(txn.clear_data(ino)))
             .await
     }
 
     async fn write_data(&self, ino: u64, start: u64, data: Vec<u8>) -> Result<usize> {
-        self.with_txn(move |_, txn| Box::pin(txn.write_data(ino, start, data)))
+        self.with_pessimistic(move |_, txn| Box::pin(txn.write_data(ino, start, data)))
             .await
     }
 
     async fn read_dir(&self, ino: u64) -> Result<Directory> {
-        self.with_txn(move |_, txn| Box::pin(txn.read_dir(ino)))
+        self.with_pessimistic(move |_, txn| Box::pin(txn.read_dir(ino)))
             .await
     }
 
     async fn read_inode(&self, ino: u64) -> Result<FileAttr> {
         let ino = self
-            .with_txn(move |_, txn| Box::pin(txn.read_inode(ino)))
+            .with_pessimistic(move |_, txn| Box::pin(txn.read_inode(ino)))
             .await?;
         Ok(ino.file_attr)
     }
@@ -143,7 +143,7 @@ impl TiFs {
     async fn setlkw(&self, ino: u64, lock_owner: u64, typ: i32) -> Result<bool> {
         loop {
             let res = self
-                .with_txn(move |_, txn| {
+                .with_pessimistic(move |_, txn| {
                     Box::pin(async move {
                         let mut inode = txn.read_inode_for_update(ino).await?;
                         match typ {
@@ -206,7 +206,7 @@ impl AsyncFileSystem for TiFs {
             .add_capabilities(fuser::consts::FUSE_FLOCK_LOCKS)
             .expect("kernel config failed to add cap_fuse FUSE_CAP_FLOCK_LOCKS");
 
-        self.with_txn(move |fs, txn| {
+        self.with_pessimistic(move |fs, txn| {
             Box::pin(async move {
                 info!("initializing tifs on {:?} ...", &fs.pd_endpoints);
                 let root_inode = txn.read_inode(ROOT_INODE).await;
@@ -261,7 +261,7 @@ impl AsyncFileSystem for TiFs {
         bkuptime: Option<SystemTime>,
         flags: Option<u32>,
     ) -> Result<Attr> {
-        self.with_txn(move |_, txn| {
+        self.with_pessimistic(move |_, txn| {
             Box::pin(async move {
                 // TODO: how to deal with fh, chgtime, bkuptime?
                 let mut attr = txn.read_inode_for_update(ino).await?;
@@ -399,14 +399,14 @@ impl AsyncFileSystem for TiFs {
         _umask: u32,
     ) -> Result<Entry> {
         let attr = self
-            .with_txn(move |_, txn| Box::pin(txn.mkdir(parent, name, mode, gid, uid)))
+            .with_pessimistic(move |_, txn| Box::pin(txn.mkdir(parent, name, mode, gid, uid)))
             .await?;
         Ok(Entry::new(attr.into(), 0))
     }
 
     #[tracing::instrument]
     async fn rmdir(&self, parent: u64, raw_name: OsString) -> Result<()> {
-        self.with_txn(move |_, txn| {
+        self.with_pessimistic(move |_, txn| {
             Box::pin(async move {
                 let mut dir = txn.read_dir_for_update(parent).await?;
                 let name = raw_name.to_string_lossy();
@@ -441,7 +441,7 @@ impl AsyncFileSystem for TiFs {
         _rdev: u32,
     ) -> Result<Entry> {
         let attr = self
-            .with_txn(move |_, txn| Box::pin(txn.make_inode(parent, name, mode, gid, uid)))
+            .with_pessimistic(move |_, txn| Box::pin(txn.make_inode(parent, name, mode, gid, uid)))
             .await?;
         Ok(Entry::new(attr.into(), 0))
     }
@@ -510,7 +510,7 @@ impl AsyncFileSystem for TiFs {
 
     /// Create a hard link.
     async fn link(&self, ino: u64, newparent: u64, newname: OsString) -> Result<Entry> {
-        self.with_txn(move |_, txn| {
+        self.with_pessimistic(move |_, txn| {
             Box::pin(async move {
                 let mut attr = txn.read_inode_for_update(ino).await?;
                 let mut dir = txn.read_dir(newparent).await?;
@@ -534,7 +534,7 @@ impl AsyncFileSystem for TiFs {
     }
 
     async fn unlink(&self, parent: u64, raw_name: OsString) -> Result<()> {
-        self.with_txn(move |_, txn| {
+        self.with_pessimistic(move |_, txn| {
             Box::pin(async move {
                 let mut dir = txn.read_dir_for_update(parent).await?;
                 let name = raw_name.to_string_lossy();
@@ -560,7 +560,7 @@ impl AsyncFileSystem for TiFs {
         new_raw_name: OsString,
         _flags: u32,
     ) -> Result<()> {
-        self.with_txn(move |_, txn| {
+        self.with_pessimistic(move |_, txn| {
             Box::pin(async move {
                 let mut dir = txn.read_dir_for_update(parent).await?;
                 let name = raw_name.to_string_lossy();
@@ -600,7 +600,7 @@ impl AsyncFileSystem for TiFs {
         name: OsString,
         link: PathBuf,
     ) -> Result<Entry> {
-        self.with_txn(move |_, txn| {
+        self.with_pessimistic(move |_, txn| {
             Box::pin(async move {
                 let mut attr = txn
                     .make_inode(parent, name, make_mode(FileType::Symlink, 0o777), gid, uid)
@@ -618,7 +618,7 @@ impl AsyncFileSystem for TiFs {
     }
 
     async fn readlink(&self, ino: u64) -> Result<Data> {
-        self.with_txn(move |_, txn| {
+        self.with_pessimistic(move |_, txn| {
             Box::pin(async move { Ok(Data::new(txn.read_data(ino, 0, None).await?)) })
         })
         .await
@@ -633,7 +633,7 @@ impl AsyncFileSystem for TiFs {
         length: i64,
         _mode: i32,
     ) -> Result<()> {
-        self.with_txn(move |_, txn| {
+        self.with_pessimistic(move |_, txn| {
             Box::pin(async move {
                 let mut inode = txn.read_inode_for_update(ino).await?;
                 txn.fallocate(&mut inode, offset, length).await
@@ -649,7 +649,7 @@ impl AsyncFileSystem for TiFs {
         let bsize = Self::BLOCK_SIZE as u32;
         let namelen = Self::MAX_NAME_LEN;
         let (ffree, blocks, files) = self
-            .with_txn(move |_, txn| {
+            .with_pessimistic(move |_, txn| {
                 Box::pin(async move {
                     let next_inode = txn
                         .read_meta()
@@ -694,7 +694,7 @@ impl AsyncFileSystem for TiFs {
         pid: u32,
         sleep: bool,
     ) -> Result<()> {
-        let not_again = self.with_txn(move |_, txn| {
+        let not_again = self.with_pessimistic(move |_, txn| {
             Box::pin(async move {
                 let mut inode = txn.read_inode_for_update(ino).await?;
                 warn!("setlk, inode:{:?}, pid:{:?}, typ para: {:?}, state type: {:?}, owner: {:?}, sleep: {:?},", inode, pid, typ, inode.lock_state.lk_type, lock_owner, sleep);
@@ -784,7 +784,7 @@ impl AsyncFileSystem for TiFs {
         pid: u32,
     ) -> Result<Lock> {
         // TODO: read only operation need not txn?
-        self.with_txn(move |_, txn| {
+        self.with_pessimistic(move |_, txn| {
             Box::pin(async move {
                 let inode = txn.read_inode(ino).await?;
                 warn!("getlk, inode:{:?}, pid:{:?}", inode, pid);
