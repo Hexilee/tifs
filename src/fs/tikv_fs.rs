@@ -11,7 +11,7 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use fuser::consts::FOPEN_DIRECT_IO;
 use fuser::*;
-use libc::{O_DIRECT, SEEK_CUR, SEEK_END, SEEK_SET, F_RDLCK, F_WRLCK, F_UNLCK};
+use libc::{F_RDLCK, F_UNLCK, F_WRLCK, O_DIRECT, SEEK_CUR, SEEK_END, SEEK_SET};
 use tikv_client::{Config, TransactionClient};
 use tracing::{debug, info, instrument, trace, warn};
 
@@ -140,48 +140,45 @@ impl TiFs {
         Ok(item)
     }
 
-    async fn setlkw(
-        &self,
-        ino: u64,
-        lock_owner: u64,
-        typ: i32,
-    ) -> Result<bool> {
+    async fn setlkw(&self, ino: u64, lock_owner: u64, typ: i32) -> Result<bool> {
         loop {
             let res = self
-                .with_txn(move |_, txn| Box::pin(async move {
-                    let mut inode = txn.read_inode_for_update(ino).await?;
-                    match typ {
-                        F_WRLCK => {
-                            if inode.lock_state.owner_set.len() > 1 {
-                                return Ok(false)
+                .with_txn(move |_, txn| {
+                    Box::pin(async move {
+                        let mut inode = txn.read_inode_for_update(ino).await?;
+                        match typ {
+                            F_WRLCK => {
+                                if inode.lock_state.owner_set.len() > 1 {
+                                    return Ok(false);
+                                }
+                                if inode.lock_state.owner_set.is_empty() {
+                                    inode.lock_state.lk_type = F_WRLCK;
+                                    inode.lock_state.owner_set.insert(lock_owner);
+                                    txn.save_inode(&inode).await?;
+                                    return Ok(true);
+                                }
+                                if inode.lock_state.owner_set.get(&lock_owner) == Some(&lock_owner)
+                                {
+                                    inode.lock_state.lk_type = F_WRLCK;
+                                    txn.save_inode(&inode).await?;
+                                    return Ok(true);
+                                }
+                                Err(FsError::InvalidLock)
                             }
-                            if inode.lock_state.owner_set.is_empty() {
-                                inode.lock_state.lk_type = F_WRLCK;
-                                inode.lock_state.owner_set.insert(lock_owner);
-                                txn.save_inode(&inode).await?;
-                                return Ok(true)
+                            F_RDLCK => {
+                                if inode.lock_state.lk_type == F_WRLCK {
+                                    return Ok(false);
+                                } else {
+                                    inode.lock_state.lk_type = F_RDLCK;
+                                    inode.lock_state.owner_set.insert(lock_owner);
+                                    txn.save_inode(&inode).await?;
+                                    return Ok(true);
+                                }
                             }
-                            if inode.lock_state.owner_set.get(&lock_owner) == Some(&lock_owner) {
-                                        inode.lock_state.lk_type = F_WRLCK;
-                                        txn.save_inode(&inode).await?;
-                                        return Ok(true)
-                            }
-                            Err(FsError::InvalidLock)
-                        },
-                        F_RDLCK => {
-                            if inode.lock_state.lk_type == F_WRLCK {
-                                return Ok(false)
-                            } else {
-                                inode.lock_state.lk_type = F_RDLCK;
-                                inode.lock_state.owner_set.insert(lock_owner);
-                                txn.save_inode(&inode).await?;
-                                return Ok(true)
-                            }
-                        },
-                        _ => return Err(FsError::InvalidLock)
-                    }
-                    
-                }))
+                            _ => return Err(FsError::InvalidLock),
+                        }
+                    })
+                })
                 .await?;
             if res {
                 break;
@@ -189,7 +186,7 @@ impl TiFs {
         }
 
         Ok(true)
-     }
+    }
 }
 
 impl Debug for TiFs {
@@ -697,7 +694,7 @@ impl AsyncFileSystem for TiFs {
         pid: u32,
         sleep: bool,
     ) -> Result<()> {
-         let not_again = self.with_txn(move |_, txn| {
+        let not_again = self.with_txn(move |_, txn| {
             Box::pin(async move {
                 let mut inode = txn.read_inode_for_update(ino).await?;
                 warn!("setlk, inode:{:?}, pid:{:?}, typ para: {:?}, state type: {:?}, owner: {:?}, sleep: {:?},", inode, pid, typ, inode.lock_state.lk_type, lock_owner, sleep);
@@ -768,9 +765,9 @@ impl AsyncFileSystem for TiFs {
         .await?;
         if !not_again {
             if self.setlkw(ino, lock_owner, typ).await? {
-                return Ok(())
+                return Ok(());
             }
-            return Err(FsError::InvalidLock)
+            return Err(FsError::InvalidLock);
         }
         return Ok(());
     }
@@ -797,4 +794,3 @@ impl AsyncFileSystem for TiFs {
         .await
     }
 }
-
