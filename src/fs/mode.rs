@@ -12,6 +12,7 @@ pub fn as_file_kind(mode: u32) -> FileType {
         libc::S_IFREG => RegularFile,
         libc::S_IFLNK => Symlink,
         libc::S_IFDIR => Directory,
+        libc::S_IFIFO => NamedPipe,
         _ => unimplemented!("{}", mode),
     }
 }
@@ -24,6 +25,7 @@ pub fn as_file_kind(mode: u32) -> FileType {
         libc::S_IFREG => RegularFile,
         libc::S_IFLNK => Symlink,
         libc::S_IFDIR => Directory,
+        libc::S_IFIFO => NamedPipe,
         _ => unimplemented!("{}", mode),
     }
 }
@@ -36,6 +38,7 @@ pub fn make_mode(tpy: FileType, perm: u16) -> u32 {
         RegularFile => libc::S_IFREG,
         Symlink => libc::S_IFLNK,
         Directory => libc::S_IFDIR,
+        NamedPipe => libc::S_IFIFO,
         _ => unimplemented!("{:?}", tpy),
     };
 
@@ -50,6 +53,7 @@ pub fn make_mode(tpy: FileType, perm: u16) -> u32 {
         RegularFile => libc::S_IFREG,
         Symlink => libc::S_IFLNK,
         Directory => libc::S_IFDIR,
+        NamedPipe => libc::S_IFIFO,
         _ => unimplemented!("{:?}", tpy),
     };
 
