@@ -13,6 +13,9 @@ pub fn as_file_kind(mode: u32) -> FileType {
         libc::S_IFLNK => Symlink,
         libc::S_IFDIR => Directory,
         libc::S_IFIFO => NamedPipe,
+        libc::S_IFBLK => BlockDevice,
+        libc::S_IFCHR => CharDevice,
+        libc::S_IFSOCK => Socket,
         _ => unimplemented!("{}", mode),
     }
 }
@@ -26,6 +29,9 @@ pub fn as_file_kind(mode: u32) -> FileType {
         libc::S_IFLNK => Symlink,
         libc::S_IFDIR => Directory,
         libc::S_IFIFO => NamedPipe,
+        libc::S_IFBLK => BlockDevice,
+        libc::S_IFCHR => CharDevice,
+        libc::S_IFSOCK => Socket,
         _ => unimplemented!("{}", mode),
     }
 }
@@ -39,7 +45,9 @@ pub fn make_mode(tpy: FileType, perm: u16) -> u32 {
         Symlink => libc::S_IFLNK,
         Directory => libc::S_IFDIR,
         NamedPipe => libc::S_IFIFO,
-        _ => unimplemented!("{:?}", tpy),
+        BlockDevice => libc::S_IFBLK,
+        CharDevice => libc::S_IFCHR,
+        Socket => libc::S_IFSOCK,
     };
 
     kind as u32 | perm as u32
@@ -54,7 +62,9 @@ pub fn make_mode(tpy: FileType, perm: u16) -> u32 {
         Symlink => libc::S_IFLNK,
         Directory => libc::S_IFDIR,
         NamedPipe => libc::S_IFIFO,
-        _ => unimplemented!("{:?}", tpy),
+        BlockDevice => libc::S_IFBLK,
+        CharDevice => libc::S_IFCHR,
+        Socket => libc::S_IFSOCK,
     };
 
     kind | perm as u32
