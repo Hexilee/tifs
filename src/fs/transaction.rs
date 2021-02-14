@@ -1,9 +1,11 @@
+use std::collections::HashSet;
 use std::ffi::OsString;
 use std::ops::{Deref, DerefMut};
 use std::time::SystemTime;
 
 use bytes::Bytes;
 use fuser::{FileAttr, FileType};
+use libc::F_UNLCK;
 use tikv_client::{Transaction, TransactionClient};
 use tracing::{debug, trace};
 
@@ -16,8 +18,7 @@ use super::meta::Meta;
 use super::mode::{as_file_kind, as_file_perm, make_mode};
 use super::reply::DirItem;
 use super::tikv_fs::TiFs;
-use libc::F_UNLCK;
-use std::collections::HashSet;
+
 pub struct Txn(Transaction);
 
 impl Txn {
@@ -37,6 +38,13 @@ impl Txn {
         gid: u32,
         uid: u32,
     ) -> Result<Inode> {
+        let name = raw_name.to_string_lossy();
+        if name.len() > TiFs::MAX_NAME_LEN as usize {
+            return Err(FsError::NameTooLong {
+                file: name.to_string(),
+            });
+        }
+
         let mut meta = self.read_meta_for_update().await?;
         let ino = meta.inode_next;
         meta.inode_next += 1;
@@ -45,8 +53,6 @@ impl Txn {
         self.save_meta(&meta).await?;
 
         let file_type = as_file_kind(mode);
-        let name = raw_name.to_string_lossy();
-
         if parent >= ROOT_INODE {
             let mut dir = self.read_dir_for_update(parent).await?;
             debug!("read dir({:?})", &dir);

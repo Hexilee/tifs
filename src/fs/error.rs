@@ -16,6 +16,9 @@ pub enum FsError {
         msg: String,
     },
 
+    #[error("name of file({file}) is too long")]
+    NameTooLong { file: String },
+
     #[error("cannot find path({file})")]
     FileNotFound { file: String },
 
@@ -106,6 +109,7 @@ impl Into<libc::c_int> for FsError {
 
         match self {
             Unimplemented => libc::ENOSYS,
+            NameTooLong { file: _ } => libc::ENAMETOOLONG,
             FileNotFound { file: _ } => libc::ENOENT,
             FileExist { file: _ } => libc::EEXIST,
             InodeNotFound { inode: _ } => libc::EFAULT,
