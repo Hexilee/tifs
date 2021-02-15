@@ -174,7 +174,6 @@ impl Txn {
         debug_assert!(inode.size <= TiFs::INLINE_DATA_THRESHOLD);
         let size = data.len() as u64;
         debug_assert!(start + size <= TiFs::INLINE_DATA_THRESHOLD);
-        debug!("write inlined data: {:?}", data);
 
         let size = data.len();
         let start = start as usize;
@@ -348,6 +347,20 @@ impl Txn {
         self.save_inode(&inode.into()).await?;
         trace!("write data: {}", String::from_utf8_lossy(&data));
         Ok(size)
+    }
+
+    pub async fn write_link(&mut self, inode: &mut Inode, data: Bytes) -> Result<usize> {
+        debug_assert!(inode.file_attr.kind == FileType::Symlink);
+        inode.inline_data = None;
+        inode.set_size(0);
+        self.write_inline_data(inode, 0, &data).await
+    }
+
+    pub async fn read_link(&mut self, ino: u64) -> Result<Vec<u8>> {
+        let mut inode = self.read_inode(ino).await?;
+        debug_assert!(inode.file_attr.kind == FileType::Symlink);
+        let size = inode.size;
+        self.read_inline_data(&mut inode, 0, size).await
     }
 
     pub async fn fallocate(&mut self, inode: &mut Inode, offset: i64, length: i64) -> Result<()> {

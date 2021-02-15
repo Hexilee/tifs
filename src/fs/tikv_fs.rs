@@ -639,13 +639,12 @@ impl AsyncFileSystem for TiFs {
     ) -> Result<Entry> {
         self.with_pessimistic(move |_, txn| {
             Box::pin(async move {
-                let attr = txn
+                let mut attr = txn
                     .make_inode(parent, name, make_mode(FileType::Symlink, 0o777), gid, uid)
                     .await?;
 
-                txn.write_data(
-                    attr.ino,
-                    0,
+                txn.write_link(
+                    &mut attr,
                     Bytes::copy_from_slice(link.as_os_str().as_bytes()),
                 )
                 .await?;
@@ -656,8 +655,8 @@ impl AsyncFileSystem for TiFs {
     }
 
     async fn readlink(&self, ino: u64) -> Result<Data> {
-        self.with_pessimistic(move |_, txn| {
-            Box::pin(async move { Ok(Data::new(txn.read_data(ino, 0, None).await?)) })
+        self.optimistic_retry(None, move |_, txn| {
+            Box::pin(async move { Ok(Data::new(txn.read_link(ino).await?)) })
         })
         .await
     }
