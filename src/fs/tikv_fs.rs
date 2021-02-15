@@ -628,6 +628,7 @@ impl AsyncFileSystem for TiFs {
         .await
     }
 
+    #[tracing::instrument]
     async fn symlink(
         &self,
         gid: u32,
@@ -638,19 +639,16 @@ impl AsyncFileSystem for TiFs {
     ) -> Result<Entry> {
         self.with_pessimistic(move |_, txn| {
             Box::pin(async move {
-                let mut attr = txn
+                let attr = txn
                     .make_inode(parent, name, make_mode(FileType::Symlink, 0o777), gid, uid)
                     .await?;
 
-                attr.set_size(
-                    txn.write_data(
-                        attr.ino,
-                        0,
-                        Bytes::copy_from_slice(link.as_os_str().as_bytes()),
-                    )
-                    .await? as u64,
-                );
-                txn.save_inode(&attr).await?;
+                txn.write_data(
+                    attr.ino,
+                    0,
+                    Bytes::copy_from_slice(link.as_os_str().as_bytes()),
+                )
+                .await?;
                 Ok(Entry::new(attr.into(), 0))
             })
         })

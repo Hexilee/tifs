@@ -174,6 +174,7 @@ impl Txn {
         debug_assert!(inode.size <= TiFs::INLINE_DATA_THRESHOLD);
         let size = data.len() as u64;
         debug_assert!(start + size <= TiFs::INLINE_DATA_THRESHOLD);
+        debug!("write inlined data: {:?}", data);
 
         let size = data.len();
         let start = start as usize;
