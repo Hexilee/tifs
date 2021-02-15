@@ -1,9 +1,9 @@
 use std::collections::HashSet;
-use std::ffi::OsString;
 use std::ops::{Deref, DerefMut};
 use std::time::SystemTime;
 
 use bytes::Bytes;
+use bytestring::ByteString;
 use fuser::{FileAttr, FileType};
 use libc::F_UNLCK;
 use tikv_client::{Transaction, TransactionClient};
@@ -12,6 +12,7 @@ use tracing::{debug, trace};
 use super::block::empty_block;
 use super::dir::Directory;
 use super::error::{FsError, Result};
+use super::index::{IndexKey, IndexValue};
 use super::inode::{Inode, LockState};
 use super::key::{ScopedKey, ROOT_INODE};
 use super::meta::Meta;
@@ -26,26 +27,21 @@ impl Txn {
         Ok(Txn(client.begin_optimistic().await?))
     }
 
-    pub async fn begin_pessimistic(client: &TransactionClient) -> Result<Self> {
-        Ok(Txn(client.begin_pessimistic().await?))
-    }
-
     pub async fn make_inode(
         &mut self,
         parent: u64,
-        raw_name: OsString,
+        name: ByteString,
         mode: u32,
         gid: u32,
         uid: u32,
     ) -> Result<Inode> {
-        let name = raw_name.to_string_lossy();
         if name.len() > TiFs::MAX_NAME_LEN as usize {
             return Err(FsError::NameTooLong {
                 file: name.to_string(),
             });
         }
 
-        let mut meta = self.read_meta_for_update().await?;
+        let mut meta = self.read_meta().await?.unwrap_or_default();
         let ino = meta.inode_next;
         meta.inode_next += 1;
 
@@ -54,16 +50,21 @@ impl Txn {
 
         let file_type = as_file_kind(mode);
         if parent >= ROOT_INODE {
-            let mut dir = self.read_dir_for_update(parent).await?;
+            if self.get_index(parent, name.clone()).await?.is_some() {
+                return Err(FsError::FileExist {
+                    file: name.to_string(),
+                });
+            }
+            self.set_index(parent, name.clone(), ino).await?;
+
+            let mut dir = self.read_dir(parent).await?;
             debug!("read dir({:?})", &dir);
 
-            if let Some(item) = dir.add(DirItem {
+            dir.push(DirItem {
                 ino,
                 name: name.to_string(),
                 typ: file_type,
-            }) {
-                return Err(FsError::FileExist { file: item.name });
-            }
+            });
 
             self.save_dir(parent, &dir).await?;
             // TODO: update attributes of directory
@@ -98,21 +99,34 @@ impl Txn {
         Ok(inode.into())
     }
 
-    pub async fn read_inode(&self, ino: u64) -> Result<Inode> {
-        let value = self
-            .get(ScopedKey::inode(ino).scoped())
-            .await?
-            .ok_or_else(|| FsError::InodeNotFound { inode: ino })?;
-        Ok(Inode::deserialize(&value)?)
+    pub async fn get_index(&self, parent: u64, name: ByteString) -> Result<Option<u64>> {
+        let key = IndexKey::new(parent, name.clone());
+        self.get(key)
+            .await
+            .map_err(FsError::from)
+            .and_then(|value| {
+                value
+                    .map(|data| Ok(IndexValue::deserialize(&data)?.ino))
+                    .transpose()
+            })
     }
 
-    pub async fn read_inode_for_update(&mut self, ino: u64) -> Result<Inode> {
-        let value = self.get_for_update(ScopedKey::inode(ino).scoped()).await?;
+    pub async fn set_index(&mut self, parent: u64, name: ByteString, ino: u64) -> Result<()> {
+        let key = IndexKey::new(parent, name);
+        let value = IndexValue::new(ino).serialize()?;
+        Ok(self.put(key, value).await?)
+    }
 
-        if value.is_empty() {
-            return Err(FsError::InodeNotFound { inode: ino });
-        }
+    pub async fn remove_index(&mut self, parent: u64, name: ByteString) -> Result<()> {
+        let key = IndexKey::new(parent, name);
+        Ok(self.delete(key).await?)
+    }
 
+    pub async fn read_inode(&self, ino: u64) -> Result<Inode> {
+        let value = self
+            .get(ScopedKey::inode(ino))
+            .await?
+            .ok_or_else(|| FsError::InodeNotFound { inode: ino })?;
         Ok(Inode::deserialize(&value)?)
     }
 
@@ -136,17 +150,6 @@ impl Txn {
     pub async fn read_meta(&self) -> Result<Option<Meta>> {
         let opt_data = self.get(ScopedKey::meta().scoped()).await?;
         opt_data.map(|data| Meta::deserialize(&data)).transpose()
-    }
-
-    pub async fn read_meta_for_update(&mut self) -> Result<Meta> {
-        let opt_data = self.get_for_update(ScopedKey::meta().scoped()).await?;
-        if opt_data.is_empty() {
-            Ok(Meta {
-                inode_next: ROOT_INODE,
-            })
-        } else {
-            Meta::deserialize(&opt_data)
-        }
     }
 
     pub async fn save_meta(&mut self, meta: &Meta) -> Result<()> {
@@ -363,6 +366,59 @@ impl Txn {
         self.read_inline_data(&mut inode, 0, size).await
     }
 
+    pub async fn link(&mut self, ino: u64, newparent: u64, newname: ByteString) -> Result<Inode> {
+        if self.get_index(newparent, newname.clone()).await?.is_some() {
+            return Err(FsError::FileExist {
+                file: newname.to_string(),
+            });
+        }
+        self.set_index(newparent, newname.clone(), ino).await?;
+
+        let mut inode = self.read_inode(ino).await?;
+        let mut dir = self.read_dir(newparent).await?;
+
+        dir.push(DirItem {
+            ino,
+            name: newname.to_string(),
+            typ: inode.kind,
+        });
+
+        self.save_dir(newparent, &dir).await?;
+        inode.nlink += 1;
+        self.save_inode(&inode).await?;
+        Ok(inode)
+    }
+
+    pub async fn unlink(&mut self, parent: u64, name: ByteString) -> Result<()> {
+        match self.get_index(parent, name.clone()).await? {
+            None => Err(FsError::FileNotFound {
+                file: name.to_string(),
+            }),
+            Some(ino) => {
+                self.remove_index(parent, name.clone()).await?;
+                let parent_dir = self.read_dir(parent).await?;
+                let new_parent_dir: Directory = parent_dir
+                    .into_iter()
+                    .filter(|item| item.name != &*name)
+                    .collect();
+                self.save_dir(parent, &new_parent_dir).await?;
+
+                let mut inode = self.read_inode(ino).await?;
+                inode.nlink -= 1;
+                self.save_inode(&inode).await?;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn lookup(&self, parent: u64, name: ByteString) -> Result<u64> {
+        self.get_index(parent, name.clone())
+            .await?
+            .ok_or_else(|| FsError::FileNotFound {
+                file: name.to_string(),
+            })
+    }
+
     pub async fn fallocate(&mut self, inode: &mut Inode, offset: i64, length: i64) -> Result<()> {
         let target_size = (offset + length) as u64;
         if target_size <= inode.size {
@@ -389,7 +445,7 @@ impl Txn {
     pub async fn mkdir(
         &mut self,
         parent: u64,
-        name: OsString,
+        name: ByteString,
         mode: u32,
         gid: u32,
         uid: u32,
@@ -409,25 +465,11 @@ impl Txn {
                 block: 0,
             })?;
         trace!("read data: {}", String::from_utf8_lossy(&data));
-        Directory::deserialize(&data)
-    }
-
-    pub async fn read_dir_for_update(&mut self, ino: u64) -> Result<Directory> {
-        let data = self.get_for_update(ScopedKey::dir(ino)).await?;
-
-        if data.is_empty() {
-            return Err(FsError::BlockNotFound {
-                inode: ino,
-                block: 0,
-            });
-        }
-
-        trace!("read data: {}", String::from_utf8_lossy(&data));
-        Directory::deserialize(&data)
+        super::dir::decode(&data)
     }
 
     pub async fn save_dir(&mut self, ino: u64, dir: &Directory) -> Result<()> {
-        let data = dir.serialize()?;
+        let data = super::dir::encode(dir)?;
         let mut attr = self.read_inode(ino).await?;
         attr.set_size(data.len() as u64);
         attr.atime = SystemTime::now();

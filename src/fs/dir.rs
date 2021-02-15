@@ -1,55 +1,37 @@
-use std::collections::HashMap;
-use std::ops::{Deref, DerefMut};
-
-use serde::{Deserialize, Serialize};
-
 use super::error::{FsError, Result};
 use super::reply::DirItem;
 use super::serialize::{deserialize, serialize, ENCODING};
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Directory(HashMap<String, DirItem>);
+pub type Directory = Vec<DirItem>;
 
-impl Directory {
-    pub fn new() -> Self {
-        Self(HashMap::new())
-    }
-
-    pub fn add(&mut self, item: DirItem) -> Option<DirItem> {
-        self.0.insert(item.name.clone(), item)
-    }
-
-    pub fn serialize(&self) -> Result<Vec<u8>> {
-        serialize(self).map_err(|err| FsError::Serialize {
-            target: "directory",
-            typ: ENCODING,
-            msg: err.to_string(),
-        })
-    }
-
-    pub fn deserialize(bytes: &[u8]) -> Result<Self> {
-        deserialize(bytes).map_err(|err| FsError::Serialize {
-            target: "directory",
-            typ: ENCODING,
-            msg: err.to_string(),
-        })
-    }
-
-    pub fn into_map(self) -> HashMap<String, DirItem> {
-        self.0
-    }
+pub fn encode(dir: &Directory) -> Result<Vec<u8>> {
+    serialize(dir).map_err(|err| FsError::Serialize {
+        target: "directory",
+        typ: ENCODING,
+        msg: err.to_string(),
+    })
 }
 
-impl Deref for Directory {
-    type Target = HashMap<String, DirItem>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+pub fn decode(bytes: &[u8]) -> Result<Directory> {
+    deserialize(bytes).map_err(|err| FsError::Serialize {
+        target: "directory",
+        typ: ENCODING,
+        msg: err.to_string(),
+    })
 }
 
-impl DerefMut for Directory {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
+pub fn encode_item(item: &DirItem) -> Result<Vec<u8>> {
+    serialize(item).map_err(|err| FsError::Serialize {
+        target: "dir item",
+        typ: ENCODING,
+        msg: err.to_string(),
+    })
+}
+
+pub fn decode_item(bytes: &[u8]) -> Result<DirItem> {
+    deserialize(bytes).map_err(|err| FsError::Serialize {
+        target: "dir item",
+        typ: ENCODING,
+        msg: err.to_string(),
+    })
 }

@@ -1,15 +1,14 @@
-use std::ffi::OsString;
 use std::fmt::{self, Debug};
 use std::future::Future;
 use std::matches;
-use std::os::unix::ffi::OsStrExt;
-use std::path::PathBuf;
 use std::pin::Pin;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use anyhow::anyhow;
+use async_std::task::sleep;
 use async_trait::async_trait;
 use bytes::Bytes;
+use bytestring::ByteString;
 use fuser::consts::FOPEN_DIRECT_IO;
 use fuser::*;
 use libc::{F_RDLCK, F_UNLCK, F_WRLCK, O_DIRECT, SEEK_CUR, SEEK_END, SEEK_SET};
@@ -91,15 +90,6 @@ impl TiFs {
         }
     }
 
-    async fn with_pessimistic<F, T>(&self, f: F) -> Result<T>
-    where
-        T: 'static + Send,
-        F: for<'a> FnOnce(&'a TiFs, &'a mut Txn) -> BoxedFuture<'a, T>,
-    {
-        let mut txn = Txn::begin_pessimistic(&self.client).await?;
-        self.process_txn(&mut txn, f).await
-    }
-
     async fn with_optimistic<F, T>(&self, f: F) -> Result<T>
     where
         T: 'static + Send,
@@ -109,20 +99,31 @@ impl TiFs {
         self.process_txn(&mut txn, f).await
     }
 
-    async fn optimistic_retry<F, T>(&self, max_times: Option<u64>, mut f: F) -> Result<T>
+    async fn spin<F, T>(&self, delay: Option<Duration>, mut f: F) -> Result<T>
     where
         T: 'static + Send,
         F: for<'a> FnMut(&'a TiFs, &'a mut Txn) -> BoxedFuture<'a, T>,
     {
-        let times = max_times.unwrap_or(std::u64::MAX);
-        for _ in 0..times {
+        loop {
             match self.with_optimistic(&mut f).await {
-                Ok(v) => return Ok(v),
-                Err(FsError::KeyError(err)) => debug!("{}", err),
-                Err(err) => return Err(err),
+                Ok(v) => break Ok(v),
+                Err(FsError::KeyError(err)) => {
+                    trace!("spin because of a key error({})", err);
+                    if let Some(time) = delay {
+                        sleep(time).await;
+                    }
+                }
+                Err(err) => break Err(err),
             }
         }
-        Err(FsError::RetryTimesExcess(times))
+    }
+
+    async fn spin_no_delay<F, T>(&self, f: F) -> Result<T>
+    where
+        T: 'static + Send,
+        F: for<'a> FnMut(&'a TiFs, &'a mut Txn) -> BoxedFuture<'a, T>,
+    {
+        self.spin(None, f).await
     }
 
     async fn read_fh(&self, ino: u64, fh: u64) -> Result<FileHandler> {
@@ -133,56 +134,39 @@ impl TiFs {
     }
 
     async fn read_data(&self, ino: u64, start: u64, chunk_size: Option<u64>) -> Result<Vec<u8>> {
-        self.with_optimistic(move |_, txn| Box::pin(txn.read_data(ino, start, chunk_size)))
+        self.spin_no_delay(move |_, txn| Box::pin(txn.read_data(ino, start, chunk_size)))
             .await
     }
 
     async fn clear_data(&self, ino: u64) -> Result<u64> {
-        self.optimistic_retry(None, move |_, txn| Box::pin(txn.clear_data(ino)))
+        self.spin_no_delay(move |_, txn| Box::pin(txn.clear_data(ino)))
             .await
     }
 
     async fn write_data(&self, ino: u64, start: u64, data: Vec<u8>) -> Result<usize> {
         let shared_data: Bytes = data.into();
-        self.optimistic_retry(None, move |_, txn| {
-            Box::pin(txn.write_data(ino, start, shared_data.clone()))
-        })
-        .await
+        self.spin_no_delay(move |_, txn| Box::pin(txn.write_data(ino, start, shared_data.clone())))
+            .await
     }
 
     async fn read_dir(&self, ino: u64) -> Result<Directory> {
-        self.with_pessimistic(move |_, txn| Box::pin(txn.read_dir(ino)))
+        self.spin_no_delay(move |_, txn| Box::pin(txn.read_dir(ino)))
             .await
     }
 
     async fn read_inode(&self, ino: u64) -> Result<FileAttr> {
         let ino = self
-            .with_pessimistic(move |_, txn| Box::pin(txn.read_inode(ino)))
+            .spin_no_delay(move |_, txn| Box::pin(txn.read_inode(ino)))
             .await?;
         Ok(ino.file_attr)
-    }
-
-    async fn lookup_file(&self, parent: u64, name: OsString) -> Result<DirItem> {
-        // TODO: use cache
-
-        let dir = self.read_dir(parent).await?;
-        let item = dir
-            .get(&*name.to_string_lossy())
-            .ok_or_else(|| FsError::FileNotFound {
-                file: name.to_string_lossy().to_string(),
-            })?
-            .clone();
-
-        debug!("get item({:?})", &item);
-        Ok(item)
     }
 
     async fn setlkw(&self, ino: u64, lock_owner: u64, typ: i32) -> Result<bool> {
         loop {
             let res = self
-                .with_pessimistic(move |_, txn| {
+                .spin_no_delay(move |_, txn| {
                     Box::pin(async move {
-                        let mut inode = txn.read_inode_for_update(ino).await?;
+                        let mut inode = txn.read_inode(ino).await?;
                         match typ {
                             F_WRLCK => {
                                 if inode.lock_state.owner_set.len() > 1 {
@@ -243,7 +227,7 @@ impl AsyncFileSystem for TiFs {
             .add_capabilities(fuser::consts::FUSE_FLOCK_LOCKS)
             .expect("kernel config failed to add cap_fuse FUSE_CAP_FLOCK_LOCKS");
 
-        self.with_pessimistic(move |fs, txn| {
+        self.spin_no_delay(move |fs, txn| {
             Box::pin(async move {
                 info!("initializing tifs on {:?} ...", &fs.pd_endpoints);
                 let root_inode = txn.read_inode(ROOT_INODE).await;
@@ -251,7 +235,7 @@ impl AsyncFileSystem for TiFs {
                     let attr = txn
                         .mkdir(
                             0,
-                            OsString::default(),
+                            Default::default(),
                             make_mode(FileType::Directory, 0o777),
                             gid,
                             uid,
@@ -268,11 +252,15 @@ impl AsyncFileSystem for TiFs {
     }
 
     #[tracing::instrument]
-    async fn lookup(&self, parent: u64, name: OsString) -> Result<Entry> {
-        // TODO: use cache
-
-        let ino = self.lookup_file(parent, name).await?.ino;
-        Ok(Entry::new(self.read_inode(ino).await?, 0))
+    async fn lookup(&self, parent: u64, name: ByteString) -> Result<Entry> {
+        self.spin_no_delay(move |_, txn| {
+            let name = name.clone();
+            Box::pin(async move {
+                let ino = txn.lookup(parent, name).await?;
+                Ok(Entry::new(txn.read_inode(ino).await?.into(), 0))
+            })
+        })
+        .await
     }
 
     #[tracing::instrument]
@@ -297,10 +285,10 @@ impl AsyncFileSystem for TiFs {
         bkuptime: Option<SystemTime>,
         flags: Option<u32>,
     ) -> Result<Attr> {
-        self.with_pessimistic(move |_, txn| {
+        self.spin_no_delay(move |_, txn| {
             Box::pin(async move {
                 // TODO: how to deal with fh, chgtime, bkuptime?
-                let mut attr = txn.read_inode_for_update(ino).await?;
+                let mut attr = txn.read_inode(ino).await?;
                 attr.perm = match mode {
                     Some(m) => as_file_perm(m),
                     None => attr.perm,
@@ -352,12 +340,7 @@ impl AsyncFileSystem for TiFs {
         offset -= 2.min(offset);
 
         let directory = self.read_dir(ino).await?;
-        for (item) in directory
-            .into_map()
-            .into_values()
-            .into_iter()
-            .skip(offset as usize)
-        {
+        for (item) in directory.into_iter().skip(offset as usize) {
             dir.push(item)
         }
         debug!("read directory {:?}", &dir);
@@ -428,38 +411,46 @@ impl AsyncFileSystem for TiFs {
     async fn mkdir(
         &self,
         parent: u64,
-        name: OsString,
+        name: ByteString,
         mode: u32,
         gid: u32,
         uid: u32,
         _umask: u32,
     ) -> Result<Entry> {
         let attr = self
-            .with_pessimistic(move |_, txn| Box::pin(txn.mkdir(parent, name, mode, gid, uid)))
+            .spin_no_delay(move |_, txn| Box::pin(txn.mkdir(parent, name.clone(), mode, gid, uid)))
             .await?;
         Ok(Entry::new(attr.into(), 0))
     }
 
     #[tracing::instrument]
-    async fn rmdir(&self, parent: u64, raw_name: OsString) -> Result<()> {
-        self.with_pessimistic(move |_, txn| {
+    async fn rmdir(&self, parent: u64, raw_name: ByteString) -> Result<()> {
+        self.spin_no_delay(move |_, txn| {
+            let name = raw_name.clone();
             Box::pin(async move {
-                let mut dir = txn.read_dir_for_update(parent).await?;
-                let name = raw_name.to_string_lossy();
-                let item = dir.remove(&*name).ok_or_else(|| FsError::FileNotFound {
-                    file: name.to_string(),
-                })?;
+                match txn.get_index(parent, name.clone()).await? {
+                    None => Err(FsError::FileNotFound {
+                        file: name.to_string(),
+                    }),
+                    Some(ino) => {
+                        let target_dir = txn.read_dir(ino).await?;
+                        if target_dir.len() != 0 {
+                            let name_str = name.to_string();
+                            debug!("dir({}) not empty", &name_str);
+                            return Err(FsError::DirNotEmpty { dir: name_str });
+                        }
+                        txn.remove_index(parent, name.clone()).await?;
+                        txn.remove_inode(ino).await?;
 
-                let dir_contents = txn.read_dir(item.ino).await?;
-                if dir_contents.len() != 0 {
-                    let name_str = name.to_string();
-                    debug!("dir({}) not empty", &name_str);
-                    return Err(FsError::DirNotEmpty { dir: name_str });
+                        let parent_dir = txn.read_dir(parent).await?;
+                        let new_parent_dir: Directory = parent_dir
+                            .into_iter()
+                            .filter(|item| item.name != &*name)
+                            .collect();
+                        txn.save_dir(parent, &new_parent_dir).await?;
+                        Ok(())
+                    }
                 }
-
-                txn.save_dir(parent, &dir).await?;
-                txn.remove_inode(item.ino).await?;
-                Ok(())
             })
         })
         .await
@@ -469,7 +460,7 @@ impl AsyncFileSystem for TiFs {
     async fn mknod(
         &self,
         parent: u64,
-        name: OsString,
+        name: ByteString,
         mode: u32,
         gid: u32,
         uid: u32,
@@ -477,7 +468,9 @@ impl AsyncFileSystem for TiFs {
         _rdev: u32,
     ) -> Result<Entry> {
         let attr = self
-            .with_pessimistic(move |_, txn| Box::pin(txn.make_inode(parent, name, mode, gid, uid)))
+            .spin_no_delay(move |_, txn| {
+                Box::pin(txn.make_inode(parent, name.clone(), mode, gid, uid))
+            })
             .await?;
         Ok(Entry::new(attr.into(), 0))
     }
@@ -492,7 +485,7 @@ impl AsyncFileSystem for TiFs {
         uid: u32,
         gid: u32,
         parent: u64,
-        name: OsString,
+        name: ByteString,
         mode: u32,
         umask: u32,
         flags: i32,
@@ -545,84 +538,33 @@ impl AsyncFileSystem for TiFs {
     }
 
     /// Create a hard link.
-    async fn link(&self, ino: u64, newparent: u64, newname: OsString) -> Result<Entry> {
-        self.with_pessimistic(move |_, txn| {
-            Box::pin(async move {
-                let mut attr = txn.read_inode_for_update(ino).await?;
-                let mut dir = txn.read_dir(newparent).await?;
-                let name = newname.to_string_lossy();
-
-                if let Some(item) = dir.add(DirItem {
-                    ino,
-                    name: name.to_string(),
-                    typ: attr.kind,
-                }) {
-                    return Err(FsError::FileExist { file: item.name });
-                }
-
-                txn.save_dir(newparent, &dir).await?;
-                attr.nlink += 1;
-                txn.save_inode(&attr).await?;
-                Ok(Entry::new(attr.into(), 0))
-            })
-        })
-        .await
+    async fn link(&self, ino: u64, newparent: u64, newname: ByteString) -> Result<Entry> {
+        let inode = self
+            .spin_no_delay(move |_, txn| Box::pin(txn.link(ino, newparent, newname.clone())))
+            .await?;
+        Ok(Entry::new(inode.into(), 0))
     }
 
-    async fn unlink(&self, parent: u64, raw_name: OsString) -> Result<()> {
-        self.with_pessimistic(move |_, txn| {
-            Box::pin(async move {
-                let mut dir = txn.read_dir_for_update(parent).await?;
-                let name = raw_name.to_string_lossy();
-                let item = dir.remove(&*name).ok_or_else(|| FsError::FileNotFound {
-                    file: name.to_string(),
-                })?;
-
-                txn.save_dir(parent, &dir).await?;
-                let mut attr = txn.read_inode_for_update(item.ino).await?;
-                attr.nlink -= 1;
-                txn.save_inode(&attr).await?;
-                Ok(())
-            })
-        })
-        .await
+    async fn unlink(&self, parent: u64, raw_name: ByteString) -> Result<()> {
+        self.spin_no_delay(move |_, txn| Box::pin(txn.unlink(parent, raw_name.clone())))
+            .await
     }
 
     async fn rename(
         &self,
         parent: u64,
-        raw_name: OsString,
+        raw_name: ByteString,
         newparent: u64,
-        new_raw_name: OsString,
+        new_raw_name: ByteString,
         _flags: u32,
     ) -> Result<()> {
-        self.with_pessimistic(move |_, txn| {
+        self.spin_no_delay(move |_, txn| {
+            let name = raw_name.clone();
+            let new_name = new_raw_name.clone();
             Box::pin(async move {
-                let mut dir = txn.read_dir_for_update(parent).await?;
-                let name = raw_name.to_string_lossy();
-                match dir.remove(&*name) {
-                    None => Err(FsError::FileNotFound {
-                        file: name.to_string(),
-                    }),
-                    Some(mut item) => {
-                        txn.save_dir(parent, &dir).await?;
-
-                        let mut new_dir = if parent == newparent {
-                            dir
-                        } else {
-                            txn.read_dir_for_update(newparent).await?
-                        };
-
-                        item.name = new_raw_name.to_string_lossy().to_string();
-                        if let Some(old_item) = new_dir.add(item) {
-                            let mut old_inode = txn.read_inode_for_update(old_item.ino).await?;
-                            old_inode.nlink -= 1;
-                            txn.save_inode(&old_inode).await?;
-                        }
-                        txn.save_dir(newparent, &new_dir).await?;
-                        Ok(())
-                    }
-                }
+                let ino = txn.lookup(parent, name.clone()).await?;
+                txn.link(ino, newparent, new_name).await?;
+                txn.unlink(parent, name).await
             })
         })
         .await
@@ -634,20 +576,18 @@ impl AsyncFileSystem for TiFs {
         gid: u32,
         uid: u32,
         parent: u64,
-        name: OsString,
-        link: PathBuf,
+        name: ByteString,
+        link: ByteString,
     ) -> Result<Entry> {
-        self.with_pessimistic(move |_, txn| {
+        self.spin_no_delay(move |_, txn| {
+            let name = name.clone();
+            let link = link.clone();
             Box::pin(async move {
                 let mut attr = txn
                     .make_inode(parent, name, make_mode(FileType::Symlink, 0o777), gid, uid)
                     .await?;
 
-                txn.write_link(
-                    &mut attr,
-                    Bytes::copy_from_slice(link.as_os_str().as_bytes()),
-                )
-                .await?;
+                txn.write_link(&mut attr, link.into_bytes()).await?;
                 Ok(Entry::new(attr.into(), 0))
             })
         })
@@ -655,7 +595,7 @@ impl AsyncFileSystem for TiFs {
     }
 
     async fn readlink(&self, ino: u64) -> Result<Data> {
-        self.optimistic_retry(None, move |_, txn| {
+        self.spin(None, move |_, txn| {
             Box::pin(async move { Ok(Data::new(txn.read_link(ino).await?)) })
         })
         .await
@@ -670,9 +610,9 @@ impl AsyncFileSystem for TiFs {
         length: i64,
         _mode: i32,
     ) -> Result<()> {
-        self.with_pessimistic(move |_, txn| {
+        self.spin_no_delay(move |_, txn| {
             Box::pin(async move {
-                let mut inode = txn.read_inode_for_update(ino).await?;
+                let mut inode = txn.read_inode(ino).await?;
                 txn.fallocate(&mut inode, offset, length).await
             })
         })
@@ -686,7 +626,7 @@ impl AsyncFileSystem for TiFs {
         let bsize = Self::BLOCK_SIZE as u32;
         let namelen = Self::MAX_NAME_LEN;
         let (ffree, blocks, files) = self
-            .with_pessimistic(move |_, txn| {
+            .spin_no_delay(move |_, txn| {
                 Box::pin(async move {
                     let next_inode = txn
                         .read_meta()
@@ -731,9 +671,9 @@ impl AsyncFileSystem for TiFs {
         pid: u32,
         sleep: bool,
     ) -> Result<()> {
-        let not_again = self.with_pessimistic(move |_, txn| {
+        let not_again = self.spin_no_delay(move |_, txn| {
             Box::pin(async move {
-                let mut inode = txn.read_inode_for_update(ino).await?;
+                let mut inode = txn.read_inode(ino).await?;
                 warn!("setlk, inode:{:?}, pid:{:?}, typ para: {:?}, state type: {:?}, owner: {:?}, sleep: {:?},", inode, pid, typ, inode.lock_state.lk_type, lock_owner, sleep);
                 if inode.file_attr.kind == FileType::Directory {
                     return Err(FsError::InvalidLock);
@@ -821,7 +761,7 @@ impl AsyncFileSystem for TiFs {
         pid: u32,
     ) -> Result<Lock> {
         // TODO: read only operation need not txn?
-        self.with_pessimistic(move |_, txn| {
+        self.spin_no_delay(move |_, txn| {
             Box::pin(async move {
                 let inode = txn.read_inode(ino).await?;
                 warn!("getlk, inode:{:?}, pid:{:?}", inode, pid);

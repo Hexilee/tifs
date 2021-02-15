@@ -3,6 +3,7 @@ pub mod block;
 pub mod dir;
 pub mod error;
 pub mod file_handler;
+pub mod index;
 pub mod inode;
 pub mod key;
 pub mod meta;

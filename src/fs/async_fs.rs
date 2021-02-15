@@ -1,14 +1,12 @@
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::SystemTime;
-use std::{
-    future::Future,
-    path::{Path, PathBuf},
-};
+use std::{future::Future, path::Path};
 
 use async_std::task::{block_on, spawn};
 use async_trait::async_trait;
+use bytestring::ByteString;
 use fuser::{
     Filesystem, KernelConfig, ReplyAttr, ReplyBmap, ReplyCreate, ReplyData, ReplyDirectory,
     ReplyDirectoryPlus, ReplyEmpty, ReplyEntry, ReplyLock, ReplyLseek, ReplyOpen, ReplyStatfs,
@@ -48,7 +46,7 @@ pub trait AsyncFileSystem: Send + Sync {
     async fn destroy(&self) {}
 
     /// Look up a directory entry by name and get its attributes.
-    async fn lookup(&self, _parent: u64, _name: OsString) -> Result<Entry> {
+    async fn lookup(&self, _parent: u64, _name: ByteString) -> Result<Entry> {
         Err(FsError::unimplemented())
     }
 
@@ -96,7 +94,7 @@ pub trait AsyncFileSystem: Send + Sync {
     async fn mknod(
         &self,
         _parent: u64,
-        _name: OsString,
+        _name: ByteString,
         _mode: u32,
         _gid: u32,
         _uid: u32,
@@ -110,7 +108,7 @@ pub trait AsyncFileSystem: Send + Sync {
     async fn mkdir(
         &self,
         _parent: u64,
-        _name: OsString,
+        _name: ByteString,
         _mode: u32,
         _gid: u32,
         _uid: u32,
@@ -120,12 +118,12 @@ pub trait AsyncFileSystem: Send + Sync {
     }
 
     /// Remove a file.
-    async fn unlink(&self, _parent: u64, _name: OsString) -> Result<()> {
+    async fn unlink(&self, _parent: u64, _name: ByteString) -> Result<()> {
         Err(FsError::unimplemented())
     }
 
     /// Remove a directory.
-    async fn rmdir(&self, _parent: u64, _name: OsString) -> Result<()> {
+    async fn rmdir(&self, _parent: u64, _name: ByteString) -> Result<()> {
         Err(FsError::unimplemented())
     }
 
@@ -135,8 +133,8 @@ pub trait AsyncFileSystem: Send + Sync {
         _gid: u32,
         _uid: u32,
         _parent: u64,
-        _name: OsString,
-        _link: PathBuf,
+        _name: ByteString,
+        _link: ByteString,
     ) -> Result<Entry> {
         Err(FsError::unimplemented())
     }
@@ -145,16 +143,16 @@ pub trait AsyncFileSystem: Send + Sync {
     async fn rename(
         &self,
         _parent: u64,
-        _name: OsString,
+        _name: ByteString,
         _newparent: u64,
-        _newname: OsString,
+        _newname: ByteString,
         _flags: u32,
     ) -> Result<()> {
         Err(FsError::unimplemented())
     }
 
     /// Create a hard link.
-    async fn link(&self, _ino: u64, _newparent: u64, _newname: OsString) -> Result<Entry> {
+    async fn link(&self, _ino: u64, _newparent: u64, _newname: ByteString) -> Result<Entry> {
         Err(FsError::unimplemented())
     }
 
@@ -311,7 +309,7 @@ pub trait AsyncFileSystem: Send + Sync {
     async fn setxattr(
         &self,
         _ino: u64,
-        _name: OsString,
+        _name: ByteString,
         _value: Vec<u8>,
         _flags: i32,
         _position: u32,
@@ -323,7 +321,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// If `size` is 0, the size of the value should be sent with `reply.size()`.
     /// If `size` is not 0, and the value fits, send it with `reply.data()`, or
     /// `reply.error(ERANGE)` if it doesn't.
-    async fn getxattr(&self, _ino: u64, _name: OsString, _size: u32) -> Result<Xattr> {
+    async fn getxattr(&self, _ino: u64, _name: ByteString, _size: u32) -> Result<Xattr> {
         Err(FsError::unimplemented())
     }
 
@@ -336,7 +334,7 @@ pub trait AsyncFileSystem: Send + Sync {
     }
 
     /// Remove an extended attribute.
-    async fn removexattr(&self, _ino: u64, _name: OsString) -> Result<()> {
+    async fn removexattr(&self, _ino: u64, _name: ByteString) -> Result<()> {
         Err(FsError::unimplemented())
     }
 
@@ -363,7 +361,7 @@ pub trait AsyncFileSystem: Send + Sync {
         _uid: u32,
         _gid: u32,
         _parent: u64,
-        _name: OsString,
+        _name: ByteString,
         _mode: u32,
         _umask: u32,
         _flags: i32,
@@ -478,7 +476,7 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
 
     fn lookup(&mut self, req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
         let async_impl = self.0.clone();
-        let name = name.to_owned();
+        let name = name.to_string_lossy().to_string().into();
         spawn_reply(req.unique(), reply, async move {
             async_impl.lookup(parent, name).await
         });
@@ -549,7 +547,7 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
         reply: ReplyEntry,
     ) {
         let async_impl = self.0.clone();
-        let name = name.to_owned();
+        let name = name.to_string_lossy().to_string().into();
         let uid = req.uid();
         let gid = req.gid();
 
@@ -570,7 +568,7 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
         reply: ReplyEntry,
     ) {
         let async_impl = self.0.clone();
-        let name = name.to_owned();
+        let name = name.to_string_lossy().to_string().into();
         let uid = req.uid();
         let gid = req.gid();
 
@@ -581,7 +579,7 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
 
     fn unlink(&mut self, req: &Request, parent: u64, name: &OsStr, reply: ReplyEmpty) {
         let async_impl = self.0.clone();
-        let name = name.to_owned();
+        let name = name.to_string_lossy().to_string().into();
         spawn_reply(req.unique(), reply, async move {
             async_impl.unlink(parent, name).await
         });
@@ -589,7 +587,7 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
 
     fn rmdir(&mut self, req: &Request, parent: u64, name: &OsStr, reply: ReplyEmpty) {
         let async_impl = self.0.clone();
-        let name = name.to_owned();
+        let name = name.to_string_lossy().to_string().into();
         spawn_reply(req.unique(), reply, async move {
             async_impl.rmdir(parent, name).await
         });
@@ -604,8 +602,8 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
         reply: ReplyEntry,
     ) {
         let async_impl = self.0.clone();
-        let name = name.to_owned();
-        let link = link.to_owned();
+        let name = name.to_string_lossy().to_string().into();
+        let link = link.to_string_lossy().to_string().into();
         let uid = req.uid();
         let gid = req.gid();
 
@@ -625,8 +623,8 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
         reply: ReplyEmpty,
     ) {
         let async_impl = self.0.clone();
-        let name = name.to_owned();
-        let newname = newname.to_owned();
+        let name = name.to_string_lossy().to_string().into();
+        let newname = newname.to_string_lossy().to_string().into();
         spawn_reply(req.unique(), reply, async move {
             async_impl
                 .rename(parent, name, newparent, newname, flags)
@@ -643,7 +641,7 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
         reply: ReplyEntry,
     ) {
         let async_impl = self.0.clone();
-        let newname = newname.to_owned();
+        let newname = newname.to_string_lossy().to_string().into();
         spawn_reply(req.unique(), reply, async move {
             async_impl.link(ino, newparent, newname).await
         });
@@ -781,7 +779,7 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
         reply: ReplyEmpty,
     ) {
         let async_impl = self.0.clone();
-        let name = name.to_owned();
+        let name = name.to_string_lossy().to_string().into();
         let value = value.to_owned();
         spawn_reply(req.unique(), reply, async move {
             async_impl.setxattr(ino, name, value, flags, position).await
@@ -790,7 +788,7 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
 
     fn getxattr(&mut self, req: &Request, ino: u64, name: &OsStr, size: u32, reply: ReplyXattr) {
         let async_impl = self.0.clone();
-        let name = name.to_owned();
+        let name = name.to_string_lossy().to_string().into();
         spawn_reply(req.unique(), reply, async move {
             async_impl.getxattr(ino, name, size).await
         });
@@ -805,7 +803,7 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
 
     fn removexattr(&mut self, req: &Request, ino: u64, name: &OsStr, reply: ReplyEmpty) {
         let async_impl = self.0.clone();
-        let name = name.to_owned();
+        let name = name.to_string_lossy().to_string().into();
         spawn_reply(req.unique(), reply, async move {
             async_impl.removexattr(ino, name).await
         });
@@ -831,7 +829,7 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
         let gid = req.gid();
 
         let async_impl = self.0.clone();
-        let name = name.to_owned();
+        let name = name.to_string_lossy().to_string().into();
         spawn_reply(req.unique(), reply, async move {
             async_impl
                 .create(uid, gid, parent, name, mode, umask, flags)
