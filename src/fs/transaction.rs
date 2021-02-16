@@ -35,12 +35,6 @@ impl Txn {
         gid: u32,
         uid: u32,
     ) -> Result<Inode> {
-        if name.len() > TiFs::MAX_NAME_LEN as usize {
-            return Err(FsError::NameTooLong {
-                file: name.to_string(),
-            });
-        }
-
         let mut meta = self.read_meta().await?.unwrap_or_default();
         let ino = meta.inode_next;
         meta.inode_next += 1;

@@ -208,6 +208,16 @@ impl TiFs {
 
         Ok(true)
     }
+
+    fn check_file_name(name: &str) -> Result<()> {
+        if name.len() <= Self::MAX_NAME_LEN as usize {
+            Ok(())
+        } else {
+            Err(FsError::NameTooLong {
+                file: name.to_string(),
+            })
+        }
+    }
 }
 
 impl Debug for TiFs {
@@ -253,6 +263,7 @@ impl AsyncFileSystem for TiFs {
 
     #[tracing::instrument]
     async fn lookup(&self, parent: u64, name: ByteString) -> Result<Entry> {
+        Self::check_file_name(&name)?;
         self.spin_no_delay(move |_, txn| {
             let name = name.clone();
             Box::pin(async move {
@@ -417,6 +428,7 @@ impl AsyncFileSystem for TiFs {
         uid: u32,
         _umask: u32,
     ) -> Result<Entry> {
+        Self::check_file_name(&name)?;
         let attr = self
             .spin_no_delay(move |_, txn| Box::pin(txn.mkdir(parent, name.clone(), mode, gid, uid)))
             .await?;
@@ -425,6 +437,7 @@ impl AsyncFileSystem for TiFs {
 
     #[tracing::instrument]
     async fn rmdir(&self, parent: u64, raw_name: ByteString) -> Result<()> {
+        Self::check_file_name(&raw_name)?;
         self.spin_no_delay(move |_, txn| {
             let name = raw_name.clone();
             Box::pin(async move {
@@ -467,6 +480,7 @@ impl AsyncFileSystem for TiFs {
         _umask: u32,
         _rdev: u32,
     ) -> Result<Entry> {
+        Self::check_file_name(&name)?;
         let attr = self
             .spin_no_delay(move |_, txn| {
                 Box::pin(txn.make_inode(parent, name.clone(), mode, gid, uid))
@@ -490,6 +504,7 @@ impl AsyncFileSystem for TiFs {
         umask: u32,
         flags: i32,
     ) -> Result<Create> {
+        Self::check_file_name(&name)?;
         let entry = self.mknod(parent, name, mode, gid, uid, umask, 0).await?;
         let open = self.open(entry.stat.ino, flags).await?;
         Ok(Create::new(
@@ -539,6 +554,7 @@ impl AsyncFileSystem for TiFs {
 
     /// Create a hard link.
     async fn link(&self, ino: u64, newparent: u64, newname: ByteString) -> Result<Entry> {
+        Self::check_file_name(&newname)?;
         let inode = self
             .spin_no_delay(move |_, txn| Box::pin(txn.link(ino, newparent, newname.clone())))
             .await?;
@@ -558,6 +574,8 @@ impl AsyncFileSystem for TiFs {
         new_raw_name: ByteString,
         _flags: u32,
     ) -> Result<()> {
+        Self::check_file_name(&raw_name)?;
+        Self::check_file_name(&new_raw_name)?;
         self.spin_no_delay(move |_, txn| {
             let name = raw_name.clone();
             let new_name = new_raw_name.clone();
@@ -579,6 +597,7 @@ impl AsyncFileSystem for TiFs {
         name: ByteString,
         link: ByteString,
     ) -> Result<Entry> {
+        Self::check_file_name(&name)?;
         self.spin_no_delay(move |_, txn| {
             let name = name.clone();
             let link = link.clone();
