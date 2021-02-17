@@ -361,10 +361,12 @@ impl Txn {
     }
 
     pub async fn link(&mut self, ino: u64, newparent: u64, newname: ByteString) -> Result<Inode> {
-        if self.get_index(newparent, newname.clone()).await?.is_some() {
-            return Err(FsError::FileExist {
-                file: newname.to_string(),
-            });
+        if let Some(old_ino) = self.get_index(newparent, newname.clone()).await? {
+            let inode = self.read_inode(old_ino).await?;
+            match inode.kind {
+                FileType::Directory => self.rmdir(newparent, newname.clone()).await?,
+                _ => self.unlink(newparent, newname.clone()).await?,
+            }
         }
         self.set_index(newparent, newname.clone(), ino).await?;
 
@@ -400,6 +402,32 @@ impl Txn {
                 let mut inode = self.read_inode(ino).await?;
                 inode.nlink -= 1;
                 self.save_inode(&inode).await?;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn rmdir(&mut self, parent: u64, name: ByteString) -> Result<()> {
+        match self.get_index(parent, name.clone()).await? {
+            None => Err(FsError::FileNotFound {
+                file: name.to_string(),
+            }),
+            Some(ino) => {
+                let target_dir = self.read_dir(ino).await?;
+                if target_dir.len() != 0 {
+                    let name_str = name.to_string();
+                    debug!("dir({}) not empty", &name_str);
+                    return Err(FsError::DirNotEmpty { dir: name_str });
+                }
+                self.remove_index(parent, name.clone()).await?;
+                self.remove_inode(ino).await?;
+
+                let parent_dir = self.read_dir(parent).await?;
+                let new_parent_dir: Directory = parent_dir
+                    .into_iter()
+                    .filter(|item| item.name != &*name)
+                    .collect();
+                self.save_dir(parent, &new_parent_dir).await?;
                 Ok(())
             }
         }

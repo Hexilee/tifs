@@ -438,35 +438,8 @@ impl AsyncFileSystem for TiFs {
     #[tracing::instrument]
     async fn rmdir(&self, parent: u64, raw_name: ByteString) -> Result<()> {
         Self::check_file_name(&raw_name)?;
-        self.spin_no_delay(move |_, txn| {
-            let name = raw_name.clone();
-            Box::pin(async move {
-                match txn.get_index(parent, name.clone()).await? {
-                    None => Err(FsError::FileNotFound {
-                        file: name.to_string(),
-                    }),
-                    Some(ino) => {
-                        let target_dir = txn.read_dir(ino).await?;
-                        if target_dir.len() != 0 {
-                            let name_str = name.to_string();
-                            debug!("dir({}) not empty", &name_str);
-                            return Err(FsError::DirNotEmpty { dir: name_str });
-                        }
-                        txn.remove_index(parent, name.clone()).await?;
-                        txn.remove_inode(ino).await?;
-
-                        let parent_dir = txn.read_dir(parent).await?;
-                        let new_parent_dir: Directory = parent_dir
-                            .into_iter()
-                            .filter(|item| item.name != &*name)
-                            .collect();
-                        txn.save_dir(parent, &new_parent_dir).await?;
-                        Ok(())
-                    }
-                }
-            })
-        })
-        .await
+        self.spin_no_delay(move |_, txn| Box::pin(txn.rmdir(parent, raw_name.clone())))
+            .await
     }
 
     #[tracing::instrument]
