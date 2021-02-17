@@ -282,8 +282,9 @@ impl AsyncFileSystem for TiFs {
                 attr.gid = gid.unwrap_or(attr.gid);
                 attr.set_size(size.unwrap_or(attr.size));
                 attr.atime = match atime {
+                    None => attr.atime,
                     Some(TimeOrNow::SpecificTime(t)) => t,
-                    Some(TimeOrNow::Now) | None => SystemTime::now(),
+                    Some(TimeOrNow::Now) => SystemTime::now(),
                 };
                 attr.mtime = match mtime {
                     Some(TimeOrNow::SpecificTime(t)) => t,
