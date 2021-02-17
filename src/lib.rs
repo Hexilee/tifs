@@ -1,5 +1,6 @@
 #![feature(map_into_keys_values)]
 #![feature(async_closure)]
+#![feature(array_chunks)]
 
 pub mod fs;
 

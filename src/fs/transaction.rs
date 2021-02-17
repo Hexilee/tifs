@@ -12,7 +12,7 @@ use tracing::{debug, trace};
 use super::block::empty_block;
 use super::dir::Directory;
 use super::error::{FsError, Result};
-use super::index::{IndexKey, IndexValue};
+use super::index::Index;
 use super::inode::{Inode, LockState};
 use super::key::{ScopedKey, ROOT_INODE};
 use super::meta::Meta;
@@ -95,25 +95,25 @@ impl Txn {
     }
 
     pub async fn get_index(&self, parent: u64, name: ByteString) -> Result<Option<u64>> {
-        let key = IndexKey::new(parent, name.clone());
+        let key = ScopedKey::index(parent, &name);
         self.get(key)
             .await
             .map_err(FsError::from)
             .and_then(|value| {
                 value
-                    .map(|data| Ok(IndexValue::deserialize(&data)?.ino))
+                    .map(|data| Ok(Index::deserialize(&data)?.ino))
                     .transpose()
             })
     }
 
     pub async fn set_index(&mut self, parent: u64, name: ByteString, ino: u64) -> Result<()> {
-        let key = IndexKey::new(parent, name);
-        let value = IndexValue::new(ino).serialize()?;
+        let key = ScopedKey::index(parent, &name);
+        let value = Index::new(ino).serialize()?;
         Ok(self.put(key, value).await?)
     }
 
     pub async fn remove_index(&mut self, parent: u64, name: ByteString) -> Result<()> {
-        let key = IndexKey::new(parent, name);
+        let key = ScopedKey::index(parent, &name);
         Ok(self.delete(key).await?)
     }
 
@@ -126,7 +126,7 @@ impl Txn {
     }
 
     pub async fn save_inode(&mut self, inode: &Inode) -> Result<()> {
-        let key = ScopedKey::inode(inode.file_attr.ino).scoped();
+        let key = ScopedKey::inode(inode.ino);
 
         if inode.file_attr.nlink == 0 {
             self.delete(key).await?;
@@ -138,24 +138,23 @@ impl Txn {
     }
 
     pub async fn remove_inode(&mut self, ino: u64) -> Result<()> {
-        self.delete(ScopedKey::inode(ino).scoped()).await?;
+        self.delete(ScopedKey::inode(ino)).await?;
         Ok(())
     }
 
     pub async fn read_meta(&self) -> Result<Option<Meta>> {
-        let opt_data = self.get(ScopedKey::meta().scoped()).await?;
+        let opt_data = self.get(ScopedKey::meta()).await?;
         opt_data.map(|data| Meta::deserialize(&data)).transpose()
     }
 
     pub async fn save_meta(&mut self, meta: &Meta) -> Result<()> {
-        self.put(ScopedKey::meta().scoped(), meta.serialize()?)
-            .await?;
+        self.put(ScopedKey::meta(), meta.serialize()?).await?;
         Ok(())
     }
 
     async fn transfer_inline_data_to_block(&mut self, inode: &mut Inode) -> Result<()> {
         debug_assert!(inode.size <= TiFs::INLINE_DATA_THRESHOLD);
-        let key = ScopedKey::new(inode.ino, 0).scoped();
+        let key = ScopedKey::block(inode.ino, 0);
         let mut data = inode.inline_data.clone().unwrap();
         data.resize(TiFs::BLOCK_SIZE as usize, 0);
         self.put(key, data).await?;
@@ -250,9 +249,15 @@ impl Txn {
         let mut data = pairs
             .enumerate()
             .flat_map(|(i, pair)| {
-                let key: ScopedKey = pair.key().clone().into();
+                let key = if let Ok(ScopedKey::Block { ino: _, block }) =
+                    ScopedKey::parse(pair.key().into())
+                {
+                    block
+                } else {
+                    unreachable!("the keys from scanning should be always valid block keys")
+                };
                 let value = pair.into_value();
-                (start_block as usize + i..key.key() as usize)
+                (start_block as usize + i..key as usize)
                     .map(|_| empty_block())
                     .chain(vec![value])
             })
@@ -284,7 +289,7 @@ impl Txn {
         let end_block = (attr.size + TiFs::BLOCK_SIZE - 1) / TiFs::BLOCK_SIZE;
 
         for block in 0..end_block {
-            self.delete(ScopedKey::new(ino, block).scoped()).await?;
+            self.delete(ScopedKey::block(ino, block)).await?;
         }
 
         let clear_size = attr.size;
@@ -310,7 +315,7 @@ impl Txn {
         }
 
         let mut block_index = start / TiFs::BLOCK_SIZE;
-        let start_key = ScopedKey::new(ino, block_index);
+        let start_key = ScopedKey::block(ino, block_index);
         let start_index = (start % TiFs::BLOCK_SIZE) as usize;
 
         let first_block_size = TiFs::BLOCK_SIZE as usize - start_index;
@@ -325,7 +330,7 @@ impl Txn {
 
         while rest.len() != 0 {
             block_index += 1;
-            let key = ScopedKey::new(ino, block_index);
+            let key = ScopedKey::block(ino, block_index);
             let (curent_block, current_rest) =
                 rest.split_at((TiFs::BLOCK_SIZE as usize).min(rest.len()));
             let mut value = curent_block.to_vec();
@@ -483,13 +488,13 @@ impl Txn {
     }
 
     pub async fn read_dir(&mut self, ino: u64) -> Result<Directory> {
-        let data = self
-            .get(ScopedKey::dir(ino))
-            .await?
-            .ok_or_else(|| FsError::BlockNotFound {
-                inode: ino,
-                block: 0,
-            })?;
+        let data =
+            self.get(ScopedKey::block(ino, 0))
+                .await?
+                .ok_or_else(|| FsError::BlockNotFound {
+                    inode: ino,
+                    block: 0,
+                })?;
         trace!("read data: {}", String::from_utf8_lossy(&data));
         super::dir::decode(&data)
     }
@@ -502,7 +507,7 @@ impl Txn {
         inode.mtime = SystemTime::now();
         inode.ctime = SystemTime::now();
         self.save_inode(&inode).await?;
-        self.put(ScopedKey::dir(ino), data).await?;
+        self.put(ScopedKey::block(ino, 0), data).await?;
         Ok(inode)
     }
 }

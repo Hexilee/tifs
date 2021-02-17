@@ -133,7 +133,7 @@ impl Console {
             return Err(anyhow!("invalid arguments `{:?}`", args));
         }
         match txn
-            .get(ScopedKey::new(args[0].parse()?, args[1].parse()?))
+            .get(ScopedKey::block(args[0].parse()?, args[1].parse()?))
             .await?
         {
             Some(value) => println!("{:?}", &value[args.get(2).unwrap_or(&"0").parse()?..]),
@@ -147,7 +147,7 @@ impl Console {
             return Err(anyhow!("invalid arguments `{:?}`", args));
         }
         match txn
-            .get(ScopedKey::new(args[0].parse()?, args[1].parse()?))
+            .get(ScopedKey::block(args[0].parse()?, args[1].parse()?))
             .await?
         {
             Some(value) => println!("{:?}", String::from_utf8_lossy(&value)),
@@ -187,7 +187,7 @@ impl Console {
         if args.len() < 2 {
             return Err(anyhow!("invalid arguments `{:?}`", args));
         }
-        txn.delete(ScopedKey::new(args[0].parse()?, args[1].parse()?))
+        txn.delete(ScopedKey::block(args[0].parse()?, args[1].parse()?))
             .await?;
         Ok(())
     }

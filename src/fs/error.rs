@@ -1,13 +1,13 @@
 use thiserror::Error;
-use tikv_client::Key;
 use tracing::error;
-
-use super::key::ScopedKey;
 
 #[derive(Error, Debug)]
 pub enum FsError {
     #[error("unimplemented")]
     Unimplemented,
+
+    #[error("invalid scoped key: {0:?}")]
+    InvalidScopedKey(Vec<u8>),
 
     #[error("fail to serialize/deserialize {target} as {typ}: `{msg}`")]
     Serialize {
@@ -90,13 +90,6 @@ impl From<tikv_client::Error> for FsError {
         use tikv_client::Error::*;
 
         match err {
-            RegionForKeyNotFound { key: key_data } => {
-                let key: Key = key_data.clone().into();
-                let scoped_key: ScopedKey = key.into();
-                Self::InodeNotFound {
-                    inode: scoped_key.key(),
-                }
-            }
             KeyError(err) => Self::KeyError(format!("{:?}", err)),
             _ => Self::UnknownError(err.to_string()),
         }
