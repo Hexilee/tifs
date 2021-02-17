@@ -20,7 +20,7 @@ use super::error::{FsError, Result};
 use super::file_handler::{FileHandler, FileHub};
 use super::inode::Inode;
 use super::key::{ScopedKey, ROOT_INODE};
-use super::mode::{as_file_perm, make_mode};
+use super::mode::make_mode;
 use super::reply::get_time;
 use super::reply::{Attr, Create, Data, Dir, DirItem, Entry, Lseek, Open, StatFs, Write};
 use super::transaction::Txn;
@@ -301,7 +301,7 @@ impl AsyncFileSystem for TiFs {
                 // TODO: how to deal with fh, chgtime, bkuptime?
                 let mut attr = txn.read_inode(ino).await?;
                 attr.perm = match mode {
-                    Some(m) => as_file_perm(m),
+                    Some(m) => m as _,
                     None => attr.perm,
                 };
                 attr.uid = uid.unwrap_or(attr.uid);
@@ -315,7 +315,7 @@ impl AsyncFileSystem for TiFs {
                     Some(TimeOrNow::SpecificTime(t)) => t,
                     Some(TimeOrNow::Now) | None => SystemTime::now(),
                 };
-                attr.ctime = ctime.unwrap_or(attr.ctime);
+                attr.ctime = ctime.unwrap_or(SystemTime::now());
                 attr.crtime = crtime.unwrap_or(attr.crtime);
                 attr.flags = flags.unwrap_or(attr.flags);
                 txn.save_inode(&attr).await?;
