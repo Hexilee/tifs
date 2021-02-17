@@ -34,6 +34,7 @@ impl Txn {
         mode: u32,
         gid: u32,
         uid: u32,
+        rdev: u32,
     ) -> Result<Inode> {
         let mut meta = self.read_meta().await?.unwrap_or_default();
         let ino = meta.inode_next;
@@ -78,7 +79,7 @@ impl Txn {
                 nlink: 1,
                 uid,
                 gid,
-                rdev: 0,
+                rdev,
                 blksize: TiFs::BLOCK_SIZE as u32,
                 padding: 0,
                 flags: 0,
@@ -475,7 +476,7 @@ impl Txn {
         uid: u32,
     ) -> Result<Inode> {
         let dir_mode = make_mode(FileType::Directory, mode as _);
-        let mut inode = self.make_inode(parent, name, dir_mode, gid, uid).await?;
+        let mut inode = self.make_inode(parent, name, dir_mode, gid, uid, 0).await?;
         inode.perm = mode as _;
         self.save_inode(&inode).await?;
         self.save_dir(inode.ino, &Directory::new()).await

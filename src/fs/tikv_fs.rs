@@ -451,12 +451,12 @@ impl AsyncFileSystem for TiFs {
         gid: u32,
         uid: u32,
         _umask: u32,
-        _rdev: u32,
+        rdev: u32,
     ) -> Result<Entry> {
         Self::check_file_name(&name)?;
         let attr = self
             .spin_no_delay(move |_, txn| {
-                Box::pin(txn.make_inode(parent, name.clone(), mode, gid, uid))
+                Box::pin(txn.make_inode(parent, name.clone(), mode, gid, uid, rdev))
             })
             .await?;
         Ok(Entry::new(attr.into(), 0))
@@ -576,7 +576,14 @@ impl AsyncFileSystem for TiFs {
             let link = link.clone();
             Box::pin(async move {
                 let mut attr = txn
-                    .make_inode(parent, name, make_mode(FileType::Symlink, 0o777), gid, uid)
+                    .make_inode(
+                        parent,
+                        name,
+                        make_mode(FileType::Symlink, 0o777),
+                        gid,
+                        uid,
+                        0,
+                    )
                     .await?;
 
                 txn.write_link(&mut attr, link.into_bytes()).await?;
