@@ -1,19 +1,18 @@
-use std::collections::HashSet;
 use std::ops::{Deref, DerefMut};
 use std::time::SystemTime;
 
 use bytes::Bytes;
 use bytestring::ByteString;
 use fuser::{FileAttr, FileType};
-use libc::F_UNLCK;
 use tikv_client::{Transaction, TransactionClient};
 use tracing::{debug, trace};
 
 use super::block::empty_block;
 use super::dir::Directory;
 use super::error::{FsError, Result};
+use super::file_handler::FileHandler;
 use super::index::Index;
-use super::inode::{Inode, LockState};
+use super::inode::Inode;
 use super::key::{ScopedKey, ROOT_INODE};
 use super::meta::Meta;
 use super::mode::{as_file_kind, as_file_perm, make_mode};
@@ -25,6 +24,64 @@ pub struct Txn(Transaction);
 impl Txn {
     pub async fn begin_optimistic(client: &TransactionClient) -> Result<Self> {
         Ok(Txn(client.begin_optimistic().await?))
+    }
+
+    pub async fn open(&mut self, ino: u64) -> Result<u64> {
+        let mut inode = self.read_inode(ino).await?;
+        let fh = inode.next_fh;
+        self.save_fh(ino, fh, &FileHandler::default()).await?;
+        inode.next_fh += 1;
+        inode.opened_fh += 1;
+        self.save_inode(&inode).await?;
+        Ok(fh)
+    }
+
+    pub async fn close(&mut self, ino: u64, fh: u64) -> Result<()> {
+        self.read_fh(ino, fh).await?;
+        self.delete(ScopedKey::handler(ino, fh)).await?;
+
+        let mut inode = self.read_inode(ino).await?;
+        inode.opened_fh -= 1;
+        self.save_inode(&inode).await
+    }
+
+    pub async fn read_fh(&self, ino: u64, fh: u64) -> Result<FileHandler> {
+        let data = self
+            .get(ScopedKey::handler(ino, fh))
+            .await?
+            .ok_or_else(|| FsError::FhNotFound { ino, fh })?;
+        FileHandler::deserialize(&data)
+    }
+
+    pub async fn save_fh(&mut self, ino: u64, fh: u64, handler: &FileHandler) -> Result<()> {
+        Ok(self
+            .put(ScopedKey::handler(ino, fh), handler.serialize()?)
+            .await?)
+    }
+
+    pub async fn read(&mut self, ino: u64, fh: u64, offset: i64, size: u32) -> Result<Vec<u8>> {
+        let handler = self.read_fh(ino, fh).await?;
+        let start = handler.cursor as i64 + offset;
+        if start < 0 {
+            return Err(FsError::InvalidOffset {
+                ino: ino,
+                offset: start,
+            });
+        }
+        self.read_data(ino, start as u64, Some(size as u64)).await
+    }
+
+    pub async fn write(&mut self, ino: u64, fh: u64, offset: i64, data: Bytes) -> Result<usize> {
+        let handler = self.read_fh(ino, fh).await?;
+        let start = handler.cursor as i64 + offset;
+        if start < 0 {
+            return Err(FsError::InvalidOffset {
+                ino: ino,
+                offset: start,
+            });
+        }
+
+        self.write_data(ino, start as u64, data).await
     }
 
     pub async fn make_inode(
@@ -65,28 +122,25 @@ impl Txn {
             // TODO: update attributes of directory
         }
 
-        let inode = Inode {
-            file_attr: FileAttr {
-                ino,
-                size: 0,
-                blocks: 0,
-                atime: SystemTime::now(),
-                mtime: SystemTime::now(),
-                ctime: SystemTime::now(),
-                crtime: SystemTime::now(),
-                kind: file_type,
-                perm: as_file_perm(mode),
-                nlink: 1,
-                uid,
-                gid,
-                rdev,
-                blksize: TiFs::BLOCK_SIZE as u32,
-                padding: 0,
-                flags: 0,
-            },
-            lock_state: LockState::new(HashSet::new(), F_UNLCK),
-            inline_data: None,
-        };
+        let inode = FileAttr {
+            ino,
+            size: 0,
+            blocks: 0,
+            atime: SystemTime::now(),
+            mtime: SystemTime::now(),
+            ctime: SystemTime::now(),
+            crtime: SystemTime::now(),
+            kind: file_type,
+            perm: as_file_perm(mode),
+            nlink: 1,
+            uid,
+            gid,
+            rdev,
+            blksize: TiFs::BLOCK_SIZE as u32,
+            padding: 0,
+            flags: 0,
+        }
+        .into();
 
         debug!("made inode ({:?})", &inode);
 
@@ -128,7 +182,7 @@ impl Txn {
     pub async fn save_inode(&mut self, inode: &Inode) -> Result<()> {
         let key = ScopedKey::inode(inode.ino);
 
-        if inode.file_attr.nlink == 0 {
+        if inode.nlink == 0 && inode.opened_fh == 0 {
             self.delete(key).await?;
         } else {
             self.put(key, inode.serialize()?).await?;

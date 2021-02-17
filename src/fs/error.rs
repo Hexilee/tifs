@@ -28,8 +28,8 @@ pub enum FsError {
     #[error("cannot find inode({inode})")]
     InodeNotFound { inode: u64 },
 
-    #[error("cannot find fh({fh})")]
-    FhNotFound { fh: u64 },
+    #[error("cannot find {ino}({fh})")]
+    FhNotFound { ino: u64, fh: u64 },
 
     #[error("invalid offset({offset}) of ino({ino})")]
     InvalidOffset { ino: u64, offset: i64 },
@@ -106,7 +106,7 @@ impl Into<libc::c_int> for FsError {
             FileNotFound { file: _ } => libc::ENOENT,
             FileExist { file: _ } => libc::EEXIST,
             InodeNotFound { inode: _ } => libc::EFAULT,
-            FhNotFound { fh: _ } => libc::EBADF,
+            FhNotFound { ino: _, fh: _ } => libc::EBADF,
             InvalidOffset { ino: _, offset: _ } => libc::EINVAL,
             UnknownWhence { whence: _ } => libc::EINVAL,
             BlockNotFound { inode: _, block: _ } => libc::EINVAL,

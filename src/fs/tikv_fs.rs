@@ -17,7 +17,6 @@ use tracing::{debug, info, instrument, trace, warn};
 
 use super::dir::Directory;
 use super::error::{FsError, Result};
-use super::file_handler::{FileHandler, FileHub};
 use super::inode::Inode;
 use super::key::{ScopedKey, ROOT_INODE};
 use super::mode::make_mode;
@@ -31,7 +30,6 @@ pub struct TiFs {
     pub pd_endpoints: Vec<String>,
     pub config: Config,
     pub client: TransactionClient,
-    pub hub: FileHub,
     pub direct_io: bool,
 }
 
@@ -63,7 +61,6 @@ impl TiFs {
             client,
             pd_endpoints: pd_endpoints.clone().into_iter().map(Into::into).collect(),
             config: cfg,
-            hub: FileHub::new(),
             direct_io: options
                 .iter()
                 .find(|option| matches!(option, MountOption::DirectIO))
@@ -124,29 +121,6 @@ impl TiFs {
         F: for<'a> FnMut(&'a TiFs, &'a mut Txn) -> BoxedFuture<'a, T>,
     {
         self.spin(None, f).await
-    }
-
-    async fn read_fh(&self, ino: u64, fh: u64) -> Result<FileHandler> {
-        self.hub
-            .get(ino, fh)
-            .await
-            .ok_or_else(|| FsError::FhNotFound { fh })
-    }
-
-    async fn read_data(&self, ino: u64, start: u64, chunk_size: Option<u64>) -> Result<Vec<u8>> {
-        self.spin_no_delay(move |_, txn| Box::pin(txn.read_data(ino, start, chunk_size)))
-            .await
-    }
-
-    async fn clear_data(&self, ino: u64) -> Result<u64> {
-        self.spin_no_delay(move |_, txn| Box::pin(txn.clear_data(ino)))
-            .await
-    }
-
-    async fn write_data(&self, ino: u64, start: u64, data: Vec<u8>) -> Result<usize> {
-        let shared_data: Bytes = data.into();
-        self.spin_no_delay(move |_, txn| Box::pin(txn.write_data(ino, start, shared_data.clone())))
-            .await
     }
 
     async fn read_dir(&self, ino: u64) -> Result<Directory> {
@@ -361,7 +335,10 @@ impl AsyncFileSystem for TiFs {
     #[tracing::instrument]
     async fn open(&self, ino: u64, flags: i32) -> Result<Open> {
         // TODO: deal with flags
-        let fh = self.hub.make(ino).await;
+        let fh = self
+            .spin_no_delay(move |_, txn| Box::pin(txn.open(ino)))
+            .await?;
+
         let mut open_flags = 0;
         if self.direct_io || flags | O_DIRECT != 0 {
             open_flags |= FOPEN_DIRECT_IO;
@@ -380,15 +357,9 @@ impl AsyncFileSystem for TiFs {
         _flags: i32,
         _lock_owner: Option<u64>,
     ) -> Result<Data> {
-        let handler = self.read_fh(ino, fh).await?;
-        let start = *handler.read_cursor().await as i64 + offset;
-        if start < 0 {
-            return Err(FsError::InvalidOffset {
-                ino: ino,
-                offset: start,
-            });
-        }
-        let data = self.read_data(ino, start as u64, Some(size as u64)).await?;
+        let data = self
+            .spin_no_delay(move |_, txn| Box::pin(txn.read(ino, fh, offset, size)))
+            .await?;
         Ok(Data::new(data))
     }
 
@@ -403,18 +374,11 @@ impl AsyncFileSystem for TiFs {
         _flags: i32,
         _lock_owner: Option<u64>,
     ) -> Result<Write> {
-        let handler = self.read_fh(ino, fh).await?;
-        let start = *handler.read_cursor().await as i64 + offset;
-        if start < 0 {
-            return Err(FsError::InvalidOffset {
-                ino: ino,
-                offset: start,
-            });
-        }
-
-        let data_len = data.len();
-        let _ = self.write_data(ino, start as u64, data).await?;
-        Ok(Write::new(data_len as u32))
+        let data: Bytes = data.into();
+        let len = self
+            .spin_no_delay(move |_, txn| Box::pin(txn.write(ino, fh, offset, data.clone())))
+            .await?;
+        Ok(Write::new(len as u32))
     }
 
     /// Create a directory.
@@ -489,25 +453,30 @@ impl AsyncFileSystem for TiFs {
     }
 
     async fn lseek(&self, ino: u64, fh: u64, offset: i64, whence: i32) -> Result<Lseek> {
-        let file_handler = self.read_fh(ino, fh).await?;
-        let mut cursor = file_handler.cursor().await;
-        let inode = self.read_inode(ino).await?;
-        let target_cursor = match whence {
-            SEEK_SET => offset,
-            SEEK_CUR => *cursor as i64 + offset,
-            SEEK_END => inode.size as i64 + offset,
-            _ => return Err(FsError::UnknownWhence { whence }),
-        };
+        self.spin_no_delay(move |_, txn| {
+            Box::pin(async move {
+                let mut file_handler = txn.read_fh(ino, fh).await?;
+                let inode = txn.read_inode(ino).await?;
+                let target_cursor = match whence {
+                    SEEK_SET => offset,
+                    SEEK_CUR => file_handler.cursor as i64 + offset,
+                    SEEK_END => inode.size as i64 + offset,
+                    _ => return Err(FsError::UnknownWhence { whence }),
+                };
 
-        if target_cursor < 0 {
-            return Err(FsError::InvalidOffset {
-                ino: inode.ino,
-                offset: target_cursor,
-            });
-        }
+                if target_cursor < 0 {
+                    return Err(FsError::InvalidOffset {
+                        ino: inode.ino,
+                        offset: target_cursor,
+                    });
+                }
 
-        *cursor = target_cursor as usize;
-        Ok(Lseek::new(target_cursor))
+                file_handler.cursor = target_cursor as u64;
+                txn.save_fh(ino, fh, &file_handler).await?;
+                Ok(Lseek::new(target_cursor))
+            })
+        })
+        .await
     }
 
     async fn release(
@@ -518,11 +487,8 @@ impl AsyncFileSystem for TiFs {
         _lock_owner: Option<u64>,
         _flush: bool,
     ) -> Result<()> {
-        self.hub
-            .close(ino, fh)
+        self.spin_no_delay(move |_, txn| Box::pin(txn.close(ino, fh)))
             .await
-            .ok_or_else(|| FsError::FhNotFound { fh })
-            .map(|_| ())
     }
 
     /// Create a hard link.
@@ -616,8 +582,6 @@ impl AsyncFileSystem for TiFs {
             })
         })
         .await?;
-        let handler = self.read_fh(ino, fh).await?;
-        *handler.cursor().await = (offset + length) as usize;
         Ok(())
     }
     // TODO: Find an api to calculate total and available space on tikv.

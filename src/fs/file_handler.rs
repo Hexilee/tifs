@@ -1,76 +1,37 @@
-use std::collections::HashMap;
-use std::sync::Arc;
+use serde::{Deserialize, Serialize};
 
-use async_std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-use slab::Slab;
+use super::error::{FsError, Result};
+use super::serialize::{deserialize, serialize, ENCODING};
 
-type FileSlab = RwLock<Slab<FileHandler>>;
-pub struct FileHub {
-    table: RwLock<HashMap<u64, FileSlab>>,
-}
-
-impl FileHub {
-    pub fn new() -> Self {
-        Self {
-            table: RwLock::new(HashMap::new()),
-        }
-    }
-
-    pub async fn make(&self, ino: u64) -> u64 {
-        let mut hub = self.table.write().await;
-        if !hub.contains_key(&ino) {
-            hub.insert(ino, RwLock::new(Slab::new()));
-        }
-
-        let mut slab = hub[&ino].write().await;
-        slab.insert(FileHandler::new()) as u64
-    }
-
-    pub async fn get(&self, ino: u64, fh: u64) -> Option<FileHandler> {
-        self.table
-            .read()
-            .await
-            .get(&ino)?
-            .read()
-            .await
-            .get(fh as usize)
-            .cloned()
-    }
-
-    pub async fn close(&self, ino: u64, fh: u64) -> Option<FileHandler> {
-        let hub = self.table.read().await;
-        let mut slab = hub.get(&ino)?.write().await;
-        if !slab.contains(fh as usize) {
-            None
-        } else {
-            Some(slab.remove(fh as usize))
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Copy, Deserialize, Serialize)]
 pub struct FileHandler {
-    cursor: Arc<RwLock<Cursor>>,
+    pub cursor: u64,
 }
-
-pub type Cursor = usize;
 
 impl FileHandler {
-    fn new() -> Self {
-        Self {
-            cursor: Arc::new(RwLock::new(0)),
-        }
+    pub const fn new(cursor: u64) -> Self {
+        Self { cursor }
     }
 
-    pub async fn read_cursor(&self) -> RwLockReadGuard<'_, Cursor> {
-        self.cursor.read().await
+    pub fn serialize(&self) -> Result<Vec<u8>> {
+        serialize(self).map_err(|err| FsError::Serialize {
+            target: "file handler",
+            typ: ENCODING,
+            msg: err.to_string(),
+        })
     }
 
-    pub async fn cursor(&self) -> RwLockWriteGuard<'_, Cursor> {
-        self.cursor.write().await
+    pub fn deserialize(bytes: &[u8]) -> Result<Self> {
+        deserialize(bytes).map_err(|err| FsError::Serialize {
+            target: "file handler",
+            typ: ENCODING,
+            msg: err.to_string(),
+        })
     }
+}
 
-    pub async fn pos(&self) -> usize {
-        *self.cursor.read().await
+impl Default for FileHandler {
+    fn default() -> Self {
+        Self::new(0)
     }
 }

@@ -1,11 +1,7 @@
-use std::mem::size_of;
-
 use serde::{Deserialize, Serialize};
 
 use super::error::{FsError, Result};
 use super::serialize::{deserialize, serialize, ENCODING};
-
-pub const INO_LEN: usize = size_of::<u64>();
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Copy, Deserialize, Serialize)]
 pub struct Index {

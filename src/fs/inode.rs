@@ -18,6 +18,8 @@ pub struct Inode {
     pub file_attr: FileAttr,
     pub lock_state: LockState,
     pub inline_data: Option<Vec<u8>>,
+    pub next_fh: u64,
+    pub opened_fh: u64,
 }
 
 impl Inode {
@@ -53,6 +55,8 @@ impl From<FileAttr> for Inode {
             file_attr: attr,
             lock_state: LockState::new(HashSet::new(), F_UNLCK),
             inline_data: None,
+            next_fh: 0,
+            opened_fh: 0,
         }
     }
 }
