@@ -401,6 +401,7 @@ impl Txn {
 
                 let mut inode = self.read_inode(ino).await?;
                 inode.nlink -= 1;
+                inode.ctime = SystemTime::now();
                 self.save_inode(&inode).await?;
                 Ok(())
             }
