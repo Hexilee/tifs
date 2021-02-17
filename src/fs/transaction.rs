@@ -473,10 +473,11 @@ impl Txn {
         gid: u32,
         uid: u32,
     ) -> Result<Inode> {
-        let dir_mode = make_mode(FileType::Directory, as_file_perm(mode));
-        let attr = self.make_inode(parent, name, dir_mode, gid, uid).await?;
-        self.save_dir(attr.ino, &Directory::new()).await?;
-        Ok(attr)
+        let dir_mode = make_mode(FileType::Directory, mode as _);
+        let mut inode = self.make_inode(parent, name, dir_mode, gid, uid).await?;
+        inode.perm = mode as _;
+        self.save_inode(&inode).await?;
+        self.save_dir(inode.ino, &Directory::new()).await
     }
 
     pub async fn read_dir(&mut self, ino: u64) -> Result<Directory> {
@@ -491,16 +492,16 @@ impl Txn {
         super::dir::decode(&data)
     }
 
-    pub async fn save_dir(&mut self, ino: u64, dir: &Directory) -> Result<()> {
+    pub async fn save_dir(&mut self, ino: u64, dir: &Directory) -> Result<Inode> {
         let data = super::dir::encode(dir)?;
-        let mut attr = self.read_inode(ino).await?;
-        attr.set_size(data.len() as u64);
-        attr.atime = SystemTime::now();
-        attr.mtime = SystemTime::now();
-        attr.ctime = SystemTime::now();
-        self.save_inode(&attr).await?;
+        let mut inode = self.read_inode(ino).await?;
+        inode.set_size(data.len() as u64);
+        inode.atime = SystemTime::now();
+        inode.mtime = SystemTime::now();
+        inode.ctime = SystemTime::now();
+        self.save_inode(&inode).await?;
         self.put(ScopedKey::dir(ino), data).await?;
-        Ok(())
+        Ok(inode)
     }
 }
 
