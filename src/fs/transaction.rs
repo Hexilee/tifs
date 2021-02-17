@@ -381,6 +381,7 @@ impl Txn {
 
         self.save_dir(newparent, &dir).await?;
         inode.nlink += 1;
+        inode.ctime = SystemTime::now();
         self.save_inode(&inode).await?;
         Ok(inode)
     }
