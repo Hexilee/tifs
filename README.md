@@ -48,51 +48,34 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
 
 ## TODO
 
-> Item end with '?' means there are probably some bugs; Item end with '!' means there must be some bugs.
-
-- [ ] FUSE API
+- [x] FUSE API
     - [x] init
     - [x] lookup
     - [x] getattr
-    - [x] setattr ?
-    - [x] readlink !
+    - [x] setattr
+    - [x] readlink
     - [x] readdir
     - [x] open
     - [x] release
     - [x] read
     - [x] write
     - [x] mkdir
-    - [x] rmdir !
+    - [x] rmdir
     - [x] mknod
     - [x] lseek
     - [x] unlink
     - [x] symlink
     - [x] rename
     - [x] link
-    - [x] statfs ???
-    - [ ] access !
+    - [x] statfs
     - [x] create
     - [x] fallocate
-    - [ ] getlk
-    - [ ] setlk
-    - [ ] copy\_file\_range
-
-- [x] Consistency
-    - [x] select for update
-        - [x] next inode
-        - [x] nlinks
-        - [x] directory
-        - [x] start and end block
-    - [x] direct io
-
-- [ ] Performance
-    - [ ] cache
-        - [ ] inode table
-        - [ ] directory
+    - [x] getlk
+    - [x] setlk
 
 - [ ] Testing and Benchmarking
-    - [ ] unit test
-    - [ ] benchmark
+    - [x] pjdfstest
+    - [ ] fio
 
 - [ ] Other
     - [ ] real-world usage
@@ -102,7 +85,7 @@ There is little docs about FUSE, refer to [example](https://github.com/cberner/f
         - [x] gcc
         - [x] rustc
         - [ ] cargo build
-        - [ ] npm install
+        - [x] npm install
         - [x] sqlite
         - [ ] tikv on tifs
         - [x] client runs on FreeBSD: simple case works
