@@ -37,12 +37,12 @@ type BoxedFuture<'a, T> = Pin<Box<dyn 'a + Send + Future<Output = Result<T>>>>;
 
 impl TiFs {
     pub const SCAN_LIMIT: u32 = 1 << 10;
-    pub const BLOCK_SIZE: u64 = 1 << 12;
+    pub const BLOCK_SIZE: u64 = 1 << 16;
     pub const BLOCK_CACHE: usize = 1 << 25;
     pub const DIR_CACHE: usize = 1 << 24;
     pub const INODE_CACHE: usize = 1 << 24;
     pub const MAX_NAME_LEN: u32 = 1 << 8;
-    pub const INLINE_DATA_THRESHOLD: u64 = 1 << 10;
+    pub const INLINE_DATA_THRESHOLD: u64 = 1 << 12;
 
     #[instrument]
     pub async fn construct<S>(

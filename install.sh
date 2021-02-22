@@ -1,0 +1,1 @@
+sudo install ./bin/release/mount /sbin/mount.tifs
