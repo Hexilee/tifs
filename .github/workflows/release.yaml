@@ -12,6 +12,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
+      - name: Install packages
+        run: |
+          sudo apt update
+          sudo apt install -y libfuse-dev libfuse3-dev build-essential
       - name: Build
         run: |
           CARGO_TARGET_DIR=./bin cargo build --features "binc" --no-default-features --all --release
