@@ -148,16 +148,18 @@ Keys in the file index scope are designed to store file index of file, following
 +-------+-------------------------------------------+----------------------------------------------+
 ```
 
+### Meta
+
 ### Directory
 
 We can store `name -> ino` records by a hash map, but the time complexity of deserializing a hash map is `O(n)`. Cache of directory may be neccessary.
 
 ### Serialize
-We would use the serde framework to serialize meta, inode and directory. Taking both of human-readable and performance into consideration, we would use json in development and use bincode in production.
+We would use the serde framework to serialize the meta, inodes, directories, file handlers and file indexes. Taking both of human-readable and performance into consideration, we would use json in development and use bincode in production.
 
 ### Consistency
 
-We would use the pessimistic transaction to confirm consistency. In most cases lock-on-write is enough. However, some actions like increasing ino-counter or decreasing nlinks needs get-for-update.
+As the pessimistic transaction of client library is not well tested, we would use the optimistic transaction to confirm consistency.
 
 ### Performance
 
