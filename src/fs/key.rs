@@ -11,19 +11,9 @@ pub const ROOT_INODE: u64 = fuser::FUSE_ROOT_ID;
 pub enum ScopedKey<'a> {
     Meta,
     Inode(u64),
-    Block {
-        ino: u64,
-        block: u64,
-    },
-    FileHandler {
-        // TODO: add open flags
-        ino: u64,
-        handler: u64,
-    },
-    FileIndex {
-        parent: u64,
-        name: &'a str,
-    },
+    Block { ino: u64, block: u64 },
+    FileHandler { ino: u64, handler: u64 },
+    FileIndex { parent: u64, name: &'a str },
 }
 
 impl<'a> ScopedKey<'a> {

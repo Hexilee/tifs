@@ -1,6 +1,6 @@
 # TiFS
 
-A distributed file system based on TiKV.
+A distributed POSIX filesystem based on TiKV.
 
 ## Run
 
@@ -43,8 +43,17 @@ mkdir ~/mnt
 mount -t tifs tifs:127.0.0.1:2379 ~/mnt
 ```
 
-## FUSE
-There is little docs about FUSE, refer to [example](https://github.com/cberner/fuser/blob/master/examples/simple.rs) for the meaning of FUSE API.
+## Contribution
+
+### Design
+
+Please refer to the [design.md](contribution/design.md)
+
+### FUSE
+There are little docs about FUSE, refer to the [example](https://github.com/cberner/fuser/blob/master/examples/simple.rs) for the meaning of FUSE API.
+
+### Deploy TiKV
+Please refer to the [tikv-deploy.md](contribution/tikv-deploy.md).
 
 ## TODO
 

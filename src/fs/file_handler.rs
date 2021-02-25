@@ -5,6 +5,7 @@ use super::serialize::{deserialize, serialize, ENCODING};
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Copy, Deserialize, Serialize)]
 pub struct FileHandler {
+    // TODO: add open flags
     pub cursor: u64,
 }
 
