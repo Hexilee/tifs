@@ -148,14 +148,86 @@ Keys in the file index scope are designed to store file index of file, following
 +-------+-------------------------------------------+----------------------------------------------+
 ```
 
-### Meta
+### Value
 
-### Directory
+### Serialize
+We would use the [serde framework](https://github.com/serde-rs/serde) to serialize/deserialize the meta, inodes, directories, file handlers and file indexes. Taking both of human-readable and performance into consideration, we would use json in development and use bincode in production.
+
+#### Meta
+
+```rust
+pub struct Meta {
+    pub inode_next: u64,
+}
+```
+The meta structure contains only an auto-increasing counter `inode_next`, designed to generate inode number. Following is a json-encoded meta.
+
+```json
+{
+    "inode_next": 1
+}
+```
+
+#### Inode
+
+```rust
+pub struct Inode {
+    pub file_attr: FileAttr,
+    pub lock_state: LockState,
+    pub inline_data: Option<Vec<u8>>,
+    pub next_fh: u64,
+    pub opened_fh: u64,
+}
+```
+
+The inode structure consists of 5 fields. 
+
+```json
+{
+    "file_attr": {
+        "ino": 1,
+        "size": 49,
+        "blocks": 1,
+        "atime": {
+            "secs_since_epoch": 1614267959,
+            "nanos_since_epoch": 646118190
+        },
+        "mtime": {
+            "secs_since_epoch": 1614267959,
+            "nanos_since_epoch": 646118234
+        },
+        "ctime": {
+            "secs_since_epoch": 1614267959,
+            "nanos_since_epoch": 646118269
+        },
+        "crtime": {
+            "secs_since_epoch": 1614267953,
+            "nanos_since_epoch": 240848357
+        },
+        "kind": "Directory",
+        "perm": 16895,
+        "nlink": 1,
+        "uid": 0,
+        "gid": 0,
+        "rdev": 0,
+        "blksize": 65536,
+        "padding": 0,
+        "flags": 0
+    },
+    "lock_state": {
+        "owner_set": [],
+        "lk_type": 2
+    },
+    "inline_data": null,
+    "next_fh": 0,
+    "opened_fh": 0
+}
+```
+
+#### Directory
 
 We can store `name -> ino` records by a hash map, but the time complexity of deserializing a hash map is `O(n)`. Cache of directory may be neccessary.
 
-### Serialize
-We would use the serde framework to serialize the meta, inodes, directories, file handlers and file indexes. Taking both of human-readable and performance into consideration, we would use json in development and use bincode in production.
 
 ### Consistency
 

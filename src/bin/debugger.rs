@@ -98,6 +98,7 @@ impl Console {
             "get" => self.get_block(txn, &commands[1..]).await?,
             "get_str" => self.get_block_str(txn, &commands[1..]).await?,
             "get_attr" => self.get_attr(txn, &commands[1..]).await?,
+            "get_raw" => self.get_attr_raw(txn, &commands[1..]).await?,
             "get_inline" => self.get_inline(txn, &commands[1..]).await?,
             "rm" => self.delete_block(txn, &commands[1..]).await?,
             cmd => return Err(anyhow!("unknow command `{}`", cmd)),
@@ -162,6 +163,17 @@ impl Console {
         }
         match txn.get(ScopedKey::inode(args[0].parse()?)).await? {
             Some(value) => println!("{:?}", Inode::deserialize(&value)?),
+            None => println!("Not Found"),
+        }
+        Ok(())
+    }
+
+    async fn get_attr_raw(&self, txn: &mut Txn, args: &[&str]) -> Result<()> {
+        if args.len() < 1 {
+            return Err(anyhow!("invalid arguments `{:?}`", args));
+        }
+        match txn.get(ScopedKey::inode(args[0].parse()?)).await? {
+            Some(value) => println!("{}", &*String::from_utf8_lossy(&value)),
             None => println!("Not Found"),
         }
         Ok(())
