@@ -150,7 +150,7 @@ Keys in the file index scope are designed to store file index of file, following
 
 ### Value
 
-### Serialize
+#### Serialize
 We would use the [serde framework](https://github.com/serde-rs/serde) to serialize/deserialize the meta, inodes, directories, file handlers and file indexes. Taking both of human-readable and performance into consideration, we would use json in development and use bincode in production.
 
 #### Meta
