@@ -24,7 +24,7 @@ jobs:
       - name: Mount
         run: |
           mkdir mnt
-          target/release/mount -t tifs tifs:127.0.0.1:2379 mnt
+          target/release/mount tifs:127.0.0.1:2379 mnt
       - name: Build pjdfstest
         run: |
           git clone https://github.com/pjd/pjdfstest.git
