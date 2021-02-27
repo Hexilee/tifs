@@ -33,7 +33,7 @@ jobs:
           ./configure
           make pjdfstest
       - name: Test
-        run: /
+        run: |
           cd $GITHUB_WORKSPACE/mnt
           prove -rv $GITHUB_WORKSPACE/pjdfstest/tests
 
