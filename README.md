@@ -2,6 +2,7 @@
 
 A distributed POSIX filesystem based on TiKV.
 
+[![pjdfstest](https://github.com/Hexilee/tifs/workflows/pjdfstest/badge.svg)](https://github.com/Hexilee/tifs/actions)
 ## Run
 
 You need a tikv cluster to run tifs. [tiup](https://github.com/pingcap/tiup) is convenient to deploy one, just install it and run `tiup playground`.
