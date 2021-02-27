@@ -14,7 +14,7 @@ jobs:
       - name: Install packages
         run: |
           sudo apt update
-          sudo apt install -y libfuse-dev libfuse3-dev build-essential
+          sudo apt install -y libfuse-dev libfuse3-dev build-essential autoconf automake perl
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -25,9 +25,18 @@ jobs:
         run: |
           mkdir mnt
           target/release/mount -t tifs tifs:127.0.0.1:2379 mnt
-      - name: Play
+      - name: Build pjdfstest
         run: |
-          cd mnt
-          ls -lah
+          git clone https://github.com/pjd/pjdfstest.git
+          cd pjdfstest
+          autoreconf -ifs
+          ./configure
+          make pjdfstest
+      - name: Test
+        run: /
+          cd $GITHUB_WORKSPACE/mnt
+          prove -rv $GITHUB_WORKSPACE/pjdfstest/tests
+
+
           
 
