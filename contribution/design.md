@@ -160,13 +160,7 @@ pub struct Meta {
     pub inode_next: u64,
 }
 ```
-The meta structure contains only an auto-increasing counter `inode_next`, designed to generate inode number. Following is a json-encoded meta.
-
-```json
-{
-    "inode_next": 1
-}
-```
+The meta structure contains only an auto-increasing counter `inode_next`, designed to generate inode number and implement [mknod](https://docs.rs/fuser/0.7.0/fuser/trait.Filesystem.html#method.mknod).
 
 #### Inode
 
@@ -180,54 +174,55 @@ pub struct Inode {
 }
 ```
 
-The inode structure consists of 5 fields. 
+The inode structure consists of 5 fields. The `file_attr` field contains basic attributes like inode number, file size, blocks and so on, you can refer to the [fuser docs](https://docs.rs/fuser/0.7.0/fuser/struct.FileAttr.html) for more details.
 
-```json
-{
-    "file_attr": {
-        "ino": 1,
-        "size": 49,
-        "blocks": 1,
-        "atime": {
-            "secs_since_epoch": 1614267959,
-            "nanos_since_epoch": 646118190
-        },
-        "mtime": {
-            "secs_since_epoch": 1614267959,
-            "nanos_since_epoch": 646118234
-        },
-        "ctime": {
-            "secs_since_epoch": 1614267959,
-            "nanos_since_epoch": 646118269
-        },
-        "crtime": {
-            "secs_since_epoch": 1614267953,
-            "nanos_since_epoch": 240848357
-        },
-        "kind": "Directory",
-        "perm": 16895,
-        "nlink": 1,
-        "uid": 0,
-        "gid": 0,
-        "rdev": 0,
-        "blksize": 65536,
-        "padding": 0,
-        "flags": 0
-    },
-    "lock_state": {
-        "owner_set": [],
-        "lk_type": 2
-    },
-    "inline_data": null,
-    "next_fh": 0,
-    "opened_fh": 0
+The `lock_state` field contains current lock type and owner set of this file, designed to implement [getlk](https://docs.rs/fuser/0.7.0/fuser/trait.Filesystem.html#method.getlk) and [setlk](https://docs.rs/fuser/0.7.0/fuser/trait.Filesystem.html#method.setlk). Following is its structure.
+
+```rust
+pub struct LockState {
+    pub owner_set: HashSet<u64>,
+    pub lk_type: i32,
 }
 ```
 
+The `inline_data` field shoud contains file contents when the total size is small enough. The `next_fn` field is an auto-increasing counter, designed to generate file handler, while the `opened_fh` field records the numbers of opened file handler.
+
+#### FileHandler
+
+```rust
+pub struct FileHandler {
+    pub cursor: u64,
+    pub flags: i32,
+}
+```
+
+Each file handler contains a cursor and open flags. The `cursor` field stores current position of the cursor, and the `flags` field is designed to manage read/write permission.
+
 #### Directory
 
-We can store `name -> ino` records by a hash map, but the time complexity of deserializing a hash map is `O(n)`. Cache of directory may be neccessary.
+```rust
+pub type Directory = Vec<DirItem>;
 
+pub struct DirItem {
+    pub ino: u64,
+    pub name: String,
+    pub typ: FileType,
+}
+```
+
+The directory contains all mappings from the file name to the inode number and file type, designed to implement the [readdir](https://docs.rs/fuser/0.7.0/fuser/trait.Filesystem.html#method.readdir).
+
+#### FileIndex
+
+```rust
+pub struct Index {
+    pub ino: u64,
+}
+```
+
+We can just store all items in a directory by a vector, but the time complexities of deserializing vector and searching it are both `O(n)`. So we need indices to optimize [lookup](https://docs.rs/fuser/0.7.0/fuser/trait.Filesystem.html#method.lookup).
+
+The index value contains only an inode number. We can construct an [index key](#fileindex) by a file name and inode number of the parent directory, then we can get inode number of the file by this key much faster. 
 
 ### Consistency
 
