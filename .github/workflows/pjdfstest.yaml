@@ -35,7 +35,7 @@ jobs:
       - name: Test
         run: |
           cd $GITHUB_WORKSPACE/mnt
-          prove -rv $GITHUB_WORKSPACE/pjdfstest/tests
+          sudo prove -rv $GITHUB_WORKSPACE/pjdfstest/tests
 
 
           
