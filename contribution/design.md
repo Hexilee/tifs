@@ -7,7 +7,7 @@ As we can build a DBMS based on TiKV, we can also build a filesystem based on it
 
 ### Key
 
-We would store different kinds of data in diffrent scope, so we design a `ScopedKey` enumeration. Following is it's structure.
+We would store different kinds of data in diffrent scope, so we design an enumeration `ScopedKey`. Following is it's structure.
 
 ```rust
 pub enum ScopedKey<'a> {
