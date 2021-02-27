@@ -20,7 +20,6 @@ jobs:
           toolchain: stable
           components: rustfmt, clippy
       - name: Build
-        uses: actions-rs/cargo@v1
         run: cargo build --features "binc" --no-default-features --all --release
       - name: Mount
         run: |
