@@ -3,11 +3,37 @@
 A distributed POSIX filesystem based on TiKV.
 
 [![pjdfstest](https://github.com/Hexilee/tifs/workflows/pjdfstest/badge.svg)](https://github.com/Hexilee/tifs/actions)
-## Run
 
+## Installation
+
+### Binary(linux-amd64 only)
+
+```bash
+mkdir tmp
+cd tmp
+wget https://github.com/Hexilee/tifs/releases/download/v0.1.0/tifs-linux-amd64.tar.gz
+tar -xvf tifs-linux-amd64.tar.gz
+sudo ./install.sh
+```
+
+### Source code
+
+```bash
+git clone https://github.com/Hexilee/tifs.git
+cd tifs
+cargo build --features "binc" --no-default-features --release
+sudo install target/release/mount /sbin/mount.tifs
+```
+
+## Usage
 You need a tikv cluster to run tifs. [tiup](https://github.com/pingcap/tiup) is convenient to deploy one, just install it and run `tiup playground`.
 
-### Develop
+```bash
+mkdir ~/mnt
+mount -t tifs tifs:127.0.0.1:2379 ~/mnt
+```
+
+## Development
 
 ```bash
 cargo build
@@ -26,23 +52,6 @@ pkg install llvm protobuf pkgconf fusefs-libs3 cmake
 ```
 
 for now, `user_allow_other` and `auto unmount` does not work for `FreeBSD`, using as `root` and manually `umount` is needed.
-
-### Product
-
-```bash
-cargo build --features "binc" --no-default-features --release
-mkdir ~/mnt
-RUST_LOG=info target/release/tifs --mount-point ~/mnt
-```
-
-### Installation
-
-```bash
-cargo build --features "binc" --no-default-features --release
-sudo install target/release/mount /sbin/mount.tifs
-mkdir ~/mnt
-mount -t tifs tifs:127.0.0.1:2379 ~/mnt
-```
 
 ## Contribution
 
