@@ -10,7 +10,7 @@ jobs:
       - name: Deploy tikv cluster
         run: docker-compose -f ci/tikv-cluster-docker-compose.yaml up -d
       - name: Stat
-        run: docker-compose ps
+        run: docker-compose -f ci/tikv-cluster-docker-compose.yaml ps
       - name: Install packages
         run: |
           sudo apt update
