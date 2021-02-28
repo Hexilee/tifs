@@ -6,7 +6,7 @@ services:
     ports:
       - "2379:2379"
     volumes:
-      - ./config/pd.toml:/pd.toml:ro
+      - ./pd.toml:/pd.toml:ro
       - ./data:/data
       - ./logs:/logs
     command:
@@ -25,7 +25,7 @@ services:
     ports:
       - "20160:20160"    
     volumes:
-      - ./config/tikv.toml:/tikv.toml:ro
+      - ./tikv.toml:/tikv.toml:ro
       - ./data:/data
       - ./logs:/logs
     command:

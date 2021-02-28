@@ -7,12 +7,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name: Deploy tikv cluster
-        run: |
-          docker-compose -f ci/tikv-cluster-docker-compose.yaml up -d
-          sleep 10
-      - name: Stat
-        run: docker-compose -f ci/tikv-cluster-docker-compose.yaml ps
       - name: Install packages
         run: |
           sudo apt update
@@ -23,6 +17,15 @@ jobs:
           components: rustfmt, clippy
       - name: Build
         run: cargo build --features "binc" --no-default-features --all --release
+      - name: Deploy tikv cluster
+        run: |
+          cd $GITHUB_WORKSPACE/ci
+          mkdir data
+          mkdir logs
+          docker-compose up -d
+          sleep 10
+      - name: Stat
+        run: docker-compose ps
       - name: Mount
         run: |
           mkdir mnt
@@ -30,14 +33,14 @@ jobs:
       - name: Build pjdfstest
         run: |
           git clone https://github.com/pjd/pjdfstest.git
-          cd pjdfstest
+          cd $GITHUB_WORKSPACE/ci/pjdfstest
           autoreconf -ifs
           ./configure
           make pjdfstest
       - name: Test
         run: |
-          cd $GITHUB_WORKSPACE/mnt
-          sudo prove -rv $GITHUB_WORKSPACE/pjdfstest/tests
+          cd $GITHUB_WORKSPACE/ci/mnt
+          sudo prove -rv $GITHUB_WORKSPACE/ci/pjdfstest/tests
 
 
           
