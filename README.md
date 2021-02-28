@@ -1,6 +1,6 @@
 # TiFS
 
-A distributed POSIX filesystem based on TiKV.
+A distributed POSIX filesystem based on TiKV, with partition tolerance and strict consistency.
 
 [![pjdfstest](https://github.com/Hexilee/tifs/workflows/pjdfstest/badge.svg)](https://github.com/Hexilee/tifs/actions)
 
