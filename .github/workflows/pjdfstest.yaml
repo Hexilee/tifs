@@ -8,7 +8,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Deploy tikv cluster
-        run: docker-compose -f ci/tikv-cluster-docker-compose.yaml up -d
+        run: |
+          docker-compose -f ci/tikv-cluster-docker-compose.yaml up -d
+          sleep 10
       - name: Stat
         run: docker-compose -f ci/tikv-cluster-docker-compose.yaml ps
       - name: Install packages
