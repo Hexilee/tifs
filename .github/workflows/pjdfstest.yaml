@@ -4,7 +4,7 @@ env:
   CARGO_TERM_COLOR: always
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
       - name: Install packages
@@ -19,13 +19,15 @@ jobs:
         run: cargo build --features "binc" --no-default-features --all --release
       - name: Deploy tikv cluster
         run: |
-          cd $GITHUB_WORKSPACE/ci
+          cd ci
           mkdir data
           mkdir logs
           docker-compose up -d
           sleep 10
       - name: Stat
-        run: docker-compose ps
+        run: |
+          cd ci
+          docker-compose ps
       - name: Mount
         run: |
           mkdir mnt
@@ -33,14 +35,14 @@ jobs:
       - name: Build pjdfstest
         run: |
           git clone https://github.com/pjd/pjdfstest.git
-          cd $GITHUB_WORKSPACE/ci/pjdfstest
+          cd pjdfstest
           autoreconf -ifs
           ./configure
           make pjdfstest
       - name: Test
         run: |
-          cd $GITHUB_WORKSPACE/ci/mnt
-          sudo prove -rv $GITHUB_WORKSPACE/ci/pjdfstest/tests
+          cd mnt
+          sudo prove -rv $GITHUB_WORKSPACE/pjdfstest/tests
 
 
           
