@@ -4,7 +4,7 @@ services:
   pd:
     image: pingcap/pd:latest
     ports:
-      - "2379:2379"
+      - "23790:2379"
     volumes:
       - ./config/pd.toml:/pd.toml:ro
       - ./data:/data
@@ -22,6 +22,8 @@ services:
     restart: on-failure
   tikv0:
     image: pingcap/tikv:latest
+    ports:
+      - "20160:20160"    
     volumes:
       - ./config/tikv.toml:/tikv.toml:ro
       - ./data:/data
@@ -36,37 +38,3 @@ services:
     depends_on:
       - "pd"
     restart: on-failure
-  tikv1:
-    image: pingcap/tikv:latest
-    volumes:
-      - ./config/tikv.toml:/tikv.toml:ro
-      - ./data:/data
-      - ./logs:/logs
-    command:
-      - --addr=0.0.0.0:20160
-      - --advertise-addr=tikv1:20160
-      - --data-dir=/data/tikv1
-      - --pd=pd0:2379,pd1:2379,pd2:2379
-      - --config=/tikv.toml
-      - --log-file=/logs/tikv1.log
-    depends_on:
-      - "pd"
-    restart: on-failure
-  tikv2:
-    image: pingcap/tikv:latest
-    volumes:
-      - ./config/tikv.toml:/tikv.toml:ro
-      - ./data:/data
-      - ./logs:/logs
-    command:
-      - --addr=0.0.0.0:20160
-      - --advertise-addr=tikv2:20160
-      - --data-dir=/data/tikv2
-      - --pd=pd0:2379,pd1:2379,pd2:2379
-      - --config=/tikv.toml
-      - --log-file=/logs/tikv2.log
-    depends_on:
-      - "pd"
-    restart: on-failure
-
-  
