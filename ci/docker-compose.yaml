@@ -13,9 +13,9 @@ services:
       - --name=pd
       - --client-urls=http://0.0.0.0:2379
       - --peer-urls=http://0.0.0.0:2380
-      - --advertise-client-urls=http://pd:2379
-      - --advertise-peer-urls=http://pd:2380
-      - --initial-cluster=pd=http://pd:2380
+      - --advertise-client-urls=http://127.0.0.1:2379
+      - --advertise-peer-urls=http://127.0.0.1:2380
+      - --initial-cluster=pd=http://127.0.0.1:2380
       - --data-dir=/data/pd
       - --config=/pd.toml
       - --log-file=/logs/pd.log
@@ -30,9 +30,9 @@ services:
       - ./logs:/logs
     command:
       - --addr=0.0.0.0:20160
-      - --advertise-addr=tikv:20160
+      - --advertise-addr=127.0.0.1:20160
       - --data-dir=/data/tikv
-      - --pd=pd:2379
+      - --pd=127.0.0.1:2379
       - --config=/tikv.toml
       - --log-file=/logs/tikv.log
     depends_on:
