@@ -4,7 +4,7 @@ services:
   pd:
     image: pingcap/pd:latest
     ports:
-      - "2379"
+      - "2379:2379"
     volumes:
       - ./config/pd.toml:/pd.toml:ro
       - ./data:/data
