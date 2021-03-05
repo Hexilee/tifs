@@ -98,11 +98,11 @@ Please refer to the [tikv-deploy.md](contribution/tikv-deploy.md).
 
 - [ ] Real-world usage
     - [x] vim
-    - [ ] emacs
+    - [x] emacs
     - [x] git
     - [x] gcc
     - [x] rustc
-    - [ ] cargo build
+    - [x] cargo build
     - [x] npm install
     - [x] sqlite
     - [ ] tikv on tifs
