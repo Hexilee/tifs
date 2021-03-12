@@ -6,6 +6,9 @@ A distributed POSIX filesystem based on TiKV, with partition tolerance and stric
 
 ## Installation
 
+### Container
+You can use the image on [docker hub](https://hub.docker.com/repository/docker/hexilee/tifs) or build from the [Dockerfile](Dockerfile).
+
 ### Binary(linux-amd64 only)
 
 ```bash
@@ -28,9 +31,20 @@ sudo install target/release/mount /sbin/mount.tifs
 ## Usage
 You need a tikv cluster to run tifs. [tiup](https://github.com/pingcap/tiup) is convenient to deploy one, just install it and run `tiup playground`.
 
+### Container
+
+```bash
+docker run -d --device /dev/fuse \
+    --cap-add SYS_ADMIN \
+    -v <mount point>:/mnt:shared \
+    hexilee/tifs:0.1.0 --mount-point /mnt --pd-endpoints <endpoints>
+```
+
+### Binary
+
 ```bash
 mkdir ~/mnt
-mount -t tifs tifs:127.0.0.1:2379 ~/mnt
+mount -t tifs tifs:<pd endpoints> ~/mnt
 ```
 
 ## Development
