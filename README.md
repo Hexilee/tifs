@@ -43,8 +43,8 @@ docker run -d --device /dev/fuse \
 ### Binary
 
 ```bash
-mkdir ~/mnt
-mount -t tifs tifs:<pd endpoints> ~/mnt
+mkdir <mount point>
+mount -t tifs tifs:<pd endpoints> <mount point>
 ```
 
 ## Development
