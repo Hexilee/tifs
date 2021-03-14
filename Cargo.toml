@@ -10,7 +10,7 @@ edition = "2018"
 fuser = { git = "https://github.com/cberner/fuser.git" , default-features = false, features = ["serializable", "abi-7-30", "libfuse"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-fuser = { git = "https://github.com/cberner/fuser.git" , default-features = false, features = ["serializable", "abi-7-30"] }
+fuser = { git = "https://github.com/cberner/fuser.git" , default-features = false, features = ["serializable"] }
 
 [dependencies]
 async-std = { version = "1.7.0", features = ["attributes"] }
