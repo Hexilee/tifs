@@ -114,20 +114,6 @@ macro_rules! define_options {
     {@ignore $id: tt $($replacement: tt),* } => { $($replacement),* };
 }
 
-#[derive(Debug,Clone,PartialEq)]
-pub struct MyStr(String);
-impl std::str::FromStr for MyStr {
-    type Err = anyhow::Error;
-    fn from_str(v: &str) -> Result<Self, Self::Err> {
-        Ok(MyStr(v.to_owned()))
-    }
-}
-impl std::fmt::Display for MyStr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
-        write!(f, "mystr({})", self.0)
-    }
-}
-
 define_options! { MountOption (FuseMountOption) {
     builtin Dev,
     builtin NoDev,
@@ -170,7 +156,6 @@ mod tests {
         assert_eq!(MountOption::DirSync.into_builtin(), Some(FuseMountOption::DirSync));
         assert_eq!(MountOption::DirectIO.into_builtin(), None);
         assert_eq!(MountOption::BlkSize (123) .into_builtin(), None);
-        assert_eq!(vec![&MountOption::NoDev, &MountOption::DirSync, &MountOption::DirectIO].iter().to_builtin(), Some(FuseMountOption::NoDev));
     }
 
     #[test]
