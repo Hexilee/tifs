@@ -11,17 +11,18 @@ use fuser::MountOption as FuseMountOption;
 use paste::paste;
 
 macro_rules! define_options {
-    { $name: ident, [ $($newopt: ident),* $(,)? ], [ $($opt: ident),* $(,)? ] } =>
     {
-        define_options!{ $name(FuseMountOption), [ $($newopt,)* ], [ $($opt,)* ]}
-    };
-    { $name: ident ($type: ident), [ $($newopt: ident),* $(,)? ], [ $($opt: ident),* $(,)? ] } =>
+        $name: ident ($type: ident) {
+            $(builtin $($optname: literal)? $opt: ident,)*
+            $(define $($newoptname: literal)? $newopt: ident $( ( $optval: ident ) )? ,)*
+        }
+    } =>
     {
-        #[derive(Debug,Clone)]
+        #[derive(Debug,Clone,PartialEq)]
         pub enum $name {
             Unknown(String),
             $($opt,)*
-            $($newopt,)*
+            $($newopt $(($optval))?,)*
         }
         impl $name {
             pub fn to_vec<'a, I: Iterator<Item=&'a str>>(iter: I) -> Vec<Self> {
@@ -38,42 +39,148 @@ macro_rules! define_options {
             }
         }
         paste! {
+            impl std::str::FromStr for $name {
+                type Err = anyhow::Error;
+                fn from_str(fullopt: &str) -> Result<Self, Self::Err> {
+                    let mut splitter = fullopt.splitn(2, '=');
+                    let optname = splitter.next().unwrap_or("");
+                    let optval = splitter.next();
+                    let optval_present = optval.is_some();
+                    let optval = optval.unwrap_or("");
+
+                    let (parsed, optval_used) = match &optname as &str {
+                        // "dirsync" => ( Self::DirSync, false),
+                        // "direct_io" if "" != "directio" => ( Self::DirectIO, false),
+                        // "blksize" => ( Self::BlkSize ( "0".parse::<u64>()? , false || (None as Option<u64>).is_none() ),
+                        $( $($optname if "" != )? stringify!([<$opt:lower>]) => (Self::$opt, false), )*
+                        $(
+                            $($newoptname if "" != )? stringify!([<$newopt:lower>]) => (
+                                Self::$newopt $(( optval.parse::<$optval>()?))? , false $( || (None as Option<$optval>).is_none() )?
+                            ),
+                        )*
+                        _ => (Self::Unknown(fullopt.to_owned()), false),
+                    };
+
+                    if !optval_used && optval_present {
+                        Err(anyhow::anyhow!("Option {} do not accept an argument", optname))
+                    } else if optval_used && !optval_present {
+                        Err(anyhow::anyhow!("Argument for {} is not supplied", optname))
+                    } else {
+                        Ok(parsed)
+                    }
+                }
+            }
             impl<T> From<T> for $name
             where
                 T: ToString
             {
                 fn from(v: T) -> Self {
-                    match &v.to_string() as &str {
-                        $(stringify!([<$opt:lower>]) => Self::$opt,)*
-                        $(stringify!([<$newopt:snake>]) => Self::$newopt,)*
-                        k => Self::Unknown(k.to_owned()),
+                    let fullopt = v.to_string();
+                    match fullopt.parse::<Self>() {
+                        Ok(v) => v,
+                        Err(_) => Self::Unknown(v.to_string()),
                     }
+                }
+            }
+            impl From<$name> for String {
+                fn from(v: $name) -> Self {
+                    Self::from(&v)
                 }
             }
             impl From<&$name> for String {
                 fn from(v: &$name) -> Self {
                     match v {
-                        $($name::$opt => stringify!([<$opt:lower>]),)*
-                        $($name::$newopt => stringify!([<$newopt:snake>]),)*
-                        $name::Unknown(v) => v,
-                    }.to_owned()
+                        // MountOption::DirSync => ("dirsync", "").0.to_owned() ,
+                        // MountOption::DirectIO => format!(concat!("{}"), ("direct_io", "directio", "").0 ),
+                        // MountOption::BlkSize (v) => format!(concat!("{}", "={}", ""), ("blksize", "").0, v.to_owned() as u64 ),
+                        $($name::$opt => ( $($optname,)? stringify!([<$opt:lower>]), "" ).0 .to_owned() , )*
+                        $(
+                            $name::$newopt $( ( define_options!(@ignore $optval v) ) )? =>
+                                format!(
+                                    concat!("{}" $(,"={}", define_options!(@ignore $optval) )? ),
+                                    ( $($newoptname,)? stringify!([<$newopt:lower>]), "" ).0
+                                    $( , v.to_owned() as $optval )?
+                                ),
+                        )*
+                        $name::Unknown(v) => v.to_owned(),
+                    }
                 }
             }
         }
     };
+
+    // internal rules
+    {@ignore $id: tt } => { "" };
+    {@ignore $id: tt $($replacement: tt),* } => { $($replacement),* };
 }
 
-define_options! { MountOption, [DirectIO], [
-    Dev,
-    NoDev,
-    Suid,
-    NoSuid,
-    RO,
-    RW,
-    Exec,
-    NoExec,
-    DirSync,
-]}
+#[derive(Debug,Clone,PartialEq)]
+pub struct MyStr(String);
+impl std::str::FromStr for MyStr {
+    type Err = anyhow::Error;
+    fn from_str(v: &str) -> Result<Self, Self::Err> {
+        Ok(MyStr(v.to_owned()))
+    }
+}
+impl std::fmt::Display for MyStr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        write!(f, "mystr({})", self.0)
+    }
+}
+
+define_options! { MountOption (FuseMountOption) {
+    builtin Dev,
+    builtin NoDev,
+    builtin Suid,
+    builtin NoSuid,
+    builtin RO,
+    builtin RW,
+    builtin Exec,
+    builtin NoExec,
+    builtin DirSync,
+    define "direct_io" DirectIO,
+    define BlkSize(u64),
+//    define "opt" OptionName(Display_Debug_Clone_PartialEq_FromStr_able)
+}}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn parse_mount_options() {
+        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["direct_io", "nodev,exec"].iter().map(|v| v.clone()))), "[DirectIO, NoDev, Exec]");
+        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["direct_io="].iter().map(|v| v.clone()))), "[Unknown(\"direct_io=\")]");
+        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["direct_io=1"].iter().map(|v| v.clone()))), "[Unknown(\"direct_io=1\")]");
+        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["direct_io=1=2"].iter().map(|v| v.clone()))), "[Unknown(\"direct_io=1=2\")]");
+        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["undefined"].iter().map(|v| v.clone()))), "[Unknown(\"undefined\")]");
+        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["undefined=foo"].iter().map(|v| v.clone()))), "[Unknown(\"undefined=foo\")]");
+        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["dev="].iter().map(|v| v.clone()))), "[Unknown(\"dev=\")]");
+        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["dev=1"].iter().map(|v| v.clone()))), "[Unknown(\"dev=1\")]");
+        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["blksize"].iter().map(|v| v.clone()))), "[Unknown(\"blksize\")]");
+        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["blksize="].iter().map(|v| v.clone()))), "[Unknown(\"blksize=\")]");
+        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["blksize=xx"].iter().map(|v| v.clone()))), "[Unknown(\"blksize=xx\")]");
+        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["blksize=32=1"].iter().map(|v| v.clone()))), "[Unknown(\"blksize=32=1\")]");
+        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["blksize=32"].iter().map(|v| v.clone()))), "[BlkSize(32)]");
+        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["direct_io", "nodev,blksize=32"].iter().map(|v| v.clone()))), "[DirectIO, NoDev, BlkSize(32)]");
+    }
+
+    #[test]
+    fn convert_mount_options() {
+        assert_eq!(MountOption::NoDev.into_builtin(), Some(FuseMountOption::NoDev));
+        assert_eq!(MountOption::DirSync.into_builtin(), Some(FuseMountOption::DirSync));
+        assert_eq!(MountOption::DirectIO.into_builtin(), None);
+        assert_eq!(MountOption::BlkSize (123) .into_builtin(), None);
+        assert_eq!(vec![&MountOption::NoDev, &MountOption::DirSync, &MountOption::DirectIO].iter().to_builtin(), Some(FuseMountOption::NoDev));
+    }
+
+    #[test]
+    fn format_mount_options() {
+        assert_eq!(String::from(MountOption::NoDev), "nodev");
+        assert_eq!(String::from(MountOption::DirectIO), "direct_io");
+        assert_eq!(String::from(MountOption::BlkSize (123)), "blksize=123");
+        assert_eq!(String::from(MountOption::BlkSize (0)), "blksize=0");
+    }
+}
 
 pub async fn mount_tifs_daemonize<F>(
     mountpoint: String,
