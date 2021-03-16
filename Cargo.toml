@@ -6,13 +6,8 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[target.'cfg(target_os = "freebsd")'.dependencies]
-fuser = { git = "https://github.com/cberner/fuser.git" , default-features = false, features = ["serializable", "abi-7-30", "libfuse"] }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-fuser = { git = "https://github.com/cberner/fuser.git" , default-features = false, features = ["serializable"] }
-
 [dependencies]
+fuser = { git = "https://github.com/cberner/fuser.git", features = ["serializable", "abi-7-17"] }
 async-std = { version = "1.7.0", features = ["attributes"] }
 futures = "0.3"
 anyhow = "1.0"
