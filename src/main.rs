@@ -12,6 +12,7 @@ async fn main() {
         .arg(
             Arg::with_name("pd")
                 .long("pd-endpoints")
+                .short("p")
                 .multiple(true)
                 .value_name("ENDPOINTS")
                 .default_value("127.0.0.1:2379")
@@ -21,6 +22,7 @@ async fn main() {
         .arg(
             Arg::with_name("mount-point")
                 .long("mount-point")
+                .short("m")
                 .value_name("MOUNT_POINT")
                 .required(true)
                 .help("Act as a client, and mount FUSE at given path")
@@ -30,6 +32,7 @@ async fn main() {
             Arg::with_name("options")
                 .value_name("OPTION")
                 .long("option")
+                .short("o")
                 .multiple(true)
                 .help("filesystem mount options"),
         )

@@ -7,12 +7,14 @@ use super::serialize::{deserialize, serialize, ENCODING};
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct Meta {
     pub inode_next: u64,
+    pub block_size: u64,
 }
 
 impl Meta {
-    pub const fn new() -> Self {
+    pub const fn new(block_size: u64) -> Self {
         Self {
             inode_next: ROOT_INODE,
+            block_size,
         }
     }
 
@@ -30,11 +32,5 @@ impl Meta {
             typ: ENCODING,
             msg: err.to_string(),
         })
-    }
-}
-
-impl Default for Meta {
-    fn default() -> Self {
-        Self::new()
     }
 }

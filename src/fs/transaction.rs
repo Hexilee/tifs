@@ -17,13 +17,28 @@ use super::key::{ScopedKey, ROOT_INODE};
 use super::meta::Meta;
 use super::mode::{as_file_kind, as_file_perm, make_mode};
 use super::reply::DirItem;
-use super::tikv_fs::TiFs;
 
-pub struct Txn(Transaction);
+pub struct Txn {
+    txn: Transaction,
+    block_size: u64,
+}
 
 impl Txn {
-    pub async fn begin_optimistic(client: &TransactionClient) -> Result<Self> {
-        Ok(Txn(client.begin_optimistic().await?))
+    const INLINE_DATA_THRESHOLD_BASE: u64 = 1 << 4;
+
+    fn inline_data_threshold(&self) -> u64 {
+        self.block_size / Self::INLINE_DATA_THRESHOLD_BASE
+    }
+
+    pub fn block_size(&self) -> u64 {
+        self.block_size
+    }
+
+    pub async fn begin_optimistic(client: &TransactionClient, block_size: u64) -> Result<Self> {
+        Ok(Txn {
+            txn: client.begin_optimistic().await?,
+            block_size,
+        })
     }
 
     pub async fn open(&mut self, ino: u64) -> Result<u64> {
@@ -93,7 +108,10 @@ impl Txn {
         uid: u32,
         rdev: u32,
     ) -> Result<Inode> {
-        let mut meta = self.read_meta().await?.unwrap_or_default();
+        let mut meta = self
+            .read_meta()
+            .await?
+            .unwrap_or_else(|| Meta::new(self.block_size));
         let ino = meta.inode_next;
         meta.inode_next += 1;
 
@@ -136,7 +154,7 @@ impl Txn {
             uid,
             gid,
             rdev,
-            blksize: TiFs::BLOCK_SIZE as u32,
+            blksize: self.block_size as u32,
             padding: 0,
             flags: 0,
         }
@@ -207,10 +225,10 @@ impl Txn {
     }
 
     async fn transfer_inline_data_to_block(&mut self, inode: &mut Inode) -> Result<()> {
-        debug_assert!(inode.size <= TiFs::INLINE_DATA_THRESHOLD);
+        debug_assert!(inode.size <= self.inline_data_threshold());
         let key = ScopedKey::block(inode.ino, 0);
         let mut data = inode.inline_data.clone().unwrap();
-        data.resize(TiFs::BLOCK_SIZE as usize, 0);
+        data.resize(self.block_size as usize, 0);
         self.put(key, data).await?;
         inode.inline_data = None;
         Ok(())
@@ -222,9 +240,9 @@ impl Txn {
         start: u64,
         data: &[u8],
     ) -> Result<usize> {
-        debug_assert!(inode.size <= TiFs::INLINE_DATA_THRESHOLD);
+        debug_assert!(inode.size <= self.inline_data_threshold());
         let size = data.len() as u64;
-        debug_assert!(start + size <= TiFs::INLINE_DATA_THRESHOLD);
+        debug_assert!(start + size <= self.inline_data_threshold());
 
         let size = data.len();
         let start = start as usize;
@@ -238,7 +256,7 @@ impl Txn {
         inode.atime = SystemTime::now();
         inode.mtime = SystemTime::now();
         inode.ctime = SystemTime::now();
-        inode.set_size(inlined.len() as u64);
+        inode.set_size(inlined.len() as u64, self.block_size);
         inode.inline_data = Some(inlined);
         self.save_inode(inode).await?;
 
@@ -251,7 +269,7 @@ impl Txn {
         start: u64,
         size: u64,
     ) -> Result<Vec<u8>> {
-        debug_assert!(inode.size <= TiFs::INLINE_DATA_THRESHOLD);
+        debug_assert!(inode.size <= self.inline_data_threshold());
 
         let start = start as usize;
         let size = size as usize;
@@ -290,8 +308,8 @@ impl Txn {
         }
 
         let target = start + size;
-        let start_block = start / TiFs::BLOCK_SIZE;
-        let end_block = (target + TiFs::BLOCK_SIZE - 1) / TiFs::BLOCK_SIZE;
+        let start_block = start / self.block_size;
+        let end_block = (target + self.block_size - 1) / self.block_size;
 
         let pairs = self
             .scan(
@@ -312,19 +330,19 @@ impl Txn {
                 };
                 let value = pair.into_value();
                 (start_block as usize + i..key as usize)
-                    .map(|_| empty_block())
+                    .map(|_| empty_block(self.block_size))
                     .chain(vec![value])
             })
             .enumerate()
             .fold(
                 Vec::with_capacity(
-                    ((end_block - start_block) * TiFs::BLOCK_SIZE - start % TiFs::BLOCK_SIZE)
+                    ((end_block - start_block) * self.block_size - start % self.block_size)
                         as usize,
                 ),
                 |mut data, (i, value)| {
                     let mut slice = value.as_slice();
                     if i == 0 {
-                        slice = &slice[(start % TiFs::BLOCK_SIZE) as usize..]
+                        slice = &slice[(start % self.block_size) as usize..]
                     }
 
                     data.extend_from_slice(slice);
@@ -340,7 +358,7 @@ impl Txn {
 
     pub async fn clear_data(&mut self, ino: u64) -> Result<u64> {
         let mut attr = self.read_inode(ino).await?;
-        let end_block = (attr.size + TiFs::BLOCK_SIZE - 1) / TiFs::BLOCK_SIZE;
+        let end_block = (attr.size + self.block_size - 1) / self.block_size;
 
         for block in 0..end_block {
             self.delete(ScopedKey::block(ino, block)).await?;
@@ -359,24 +377,26 @@ impl Txn {
         let size = data.len();
         let target = start + size as u64;
 
-        if inode.inline_data.is_some() && target > TiFs::INLINE_DATA_THRESHOLD {
+        if inode.inline_data.is_some() && target > self.block_size {
             self.transfer_inline_data_to_block(&mut inode).await?;
         }
 
-        if (inode.inline_data.is_some() || inode.size == 0) && target <= TiFs::INLINE_DATA_THRESHOLD
-        {
+        if (inode.inline_data.is_some() || inode.size == 0) && target <= self.block_size {
             return self.write_inline_data(&mut inode, start, &data).await;
         }
 
-        let mut block_index = start / TiFs::BLOCK_SIZE;
+        let mut block_index = start / self.block_size;
         let start_key = ScopedKey::block(ino, block_index);
-        let start_index = (start % TiFs::BLOCK_SIZE) as usize;
+        let start_index = (start % self.block_size) as usize;
 
-        let first_block_size = TiFs::BLOCK_SIZE as usize - start_index;
+        let first_block_size = self.block_size as usize - start_index;
 
         let (first_block, mut rest) = data.split_at(first_block_size.min(data.len()));
 
-        let mut start_value = self.get(start_key).await?.unwrap_or_else(empty_block);
+        let mut start_value = self
+            .get(start_key)
+            .await?
+            .unwrap_or_else(|| empty_block(self.block_size));
 
         start_value[start_index..start_index + first_block.len()].copy_from_slice(first_block);
 
@@ -386,10 +406,13 @@ impl Txn {
             block_index += 1;
             let key = ScopedKey::block(ino, block_index);
             let (curent_block, current_rest) =
-                rest.split_at((TiFs::BLOCK_SIZE as usize).min(rest.len()));
+                rest.split_at((self.block_size as usize).min(rest.len()));
             let mut value = curent_block.to_vec();
-            if value.len() < TiFs::BLOCK_SIZE as usize {
-                let mut last_value = self.get(key).await?.unwrap_or_else(empty_block);
+            if value.len() < self.block_size as usize {
+                let mut last_value = self
+                    .get(key)
+                    .await?
+                    .unwrap_or_else(|| empty_block(self.block_size));
                 last_value[..value.len()].copy_from_slice(&value);
                 value = last_value;
             }
@@ -400,7 +423,7 @@ impl Txn {
         inode.atime = SystemTime::now();
         inode.mtime = SystemTime::now();
         inode.ctime = SystemTime::now();
-        inode.set_size(inode.size.max(target));
+        inode.set_size(inode.size.max(target), self.block_size);
         self.save_inode(&inode.into()).await?;
         trace!("write data: {}", String::from_utf8_lossy(&data));
         Ok(size)
@@ -409,7 +432,7 @@ impl Txn {
     pub async fn write_link(&mut self, inode: &mut Inode, data: Bytes) -> Result<usize> {
         debug_assert!(inode.file_attr.kind == FileType::Symlink);
         inode.inline_data = None;
-        inode.set_size(0);
+        inode.set_size(0, self.block_size);
         self.write_inline_data(inode, 0, &data).await
     }
 
@@ -510,7 +533,7 @@ impl Txn {
         }
 
         if inode.inline_data.is_some() {
-            if target_size <= TiFs::INLINE_DATA_THRESHOLD {
+            if target_size <= self.inline_data_threshold() {
                 let original_size = inode.size;
                 let data = vec![0; (target_size - original_size) as usize];
                 self.write_inline_data(inode, original_size, &data).await?;
@@ -520,7 +543,7 @@ impl Txn {
             }
         }
 
-        inode.set_size(target_size);
+        inode.set_size(target_size, self.block_size);
         inode.mtime = SystemTime::now();
         self.save_inode(inode).await?;
         Ok(())
@@ -556,7 +579,7 @@ impl Txn {
     pub async fn save_dir(&mut self, ino: u64, dir: &Directory) -> Result<Inode> {
         let data = super::dir::encode(dir)?;
         let mut inode = self.read_inode(ino).await?;
-        inode.set_size(data.len() as u64);
+        inode.set_size(data.len() as u64, self.block_size);
         inode.atime = SystemTime::now();
         inode.mtime = SystemTime::now();
         inode.ctime = SystemTime::now();
@@ -570,12 +593,12 @@ impl Deref for Txn {
     type Target = Transaction;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.txn
     }
 }
 
 impl DerefMut for Txn {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+        &mut self.txn
     }
 }

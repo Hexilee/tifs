@@ -63,6 +63,9 @@ pub enum FsError {
 
     #[error("invalid lock")]
     InvalidLock,
+
+    #[error("block size conflicts: origin({origin}) != new({new})")]
+    BlockSizeConflict { origin: u64, new: u64 },
 }
 
 pub type Result<T> = std::result::Result<T, FsError>;
@@ -70,6 +73,10 @@ pub type Result<T> = std::result::Result<T, FsError>;
 impl FsError {
     pub fn unimplemented() -> Self {
         Self::Unimplemented
+    }
+
+    pub fn block_size_conflict(origin: u64, new: u64) -> Self {
+        Self::BlockSizeConflict { origin, new }
     }
 }
 
@@ -115,6 +122,7 @@ impl Into<libc::c_int> for FsError {
             KeyError(_) => libc::EAGAIN,
             RetryTimesExcess(_) => libc::EAGAIN,
             InvalidStr => libc::EINVAL,
+            BlockSizeConflict { origin: _, new: _ } => libc::EINVAL,
             _ => libc::EFAULT,
         }
     }

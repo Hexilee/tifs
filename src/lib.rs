@@ -134,36 +134,130 @@ mod tests {
     use super::*;
     #[test]
     fn parse_mount_options() {
-        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["direct_io", "nodev,exec"].iter().map(|v| v.clone()))), "[DirectIO, NoDev, Exec]");
-        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["direct_io="].iter().map(|v| v.clone()))), "[Unknown(\"direct_io=\")]");
-        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["direct_io=1"].iter().map(|v| v.clone()))), "[Unknown(\"direct_io=1\")]");
-        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["direct_io=1=2"].iter().map(|v| v.clone()))), "[Unknown(\"direct_io=1=2\")]");
-        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["undefined"].iter().map(|v| v.clone()))), "[Unknown(\"undefined\")]");
-        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["undefined=foo"].iter().map(|v| v.clone()))), "[Unknown(\"undefined=foo\")]");
-        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["dev="].iter().map(|v| v.clone()))), "[Unknown(\"dev=\")]");
-        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["dev=1"].iter().map(|v| v.clone()))), "[Unknown(\"dev=1\")]");
-        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["blksize"].iter().map(|v| v.clone()))), "[Unknown(\"blksize\")]");
-        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["blksize="].iter().map(|v| v.clone()))), "[Unknown(\"blksize=\")]");
-        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["blksize=xx"].iter().map(|v| v.clone()))), "[Unknown(\"blksize=xx\")]");
-        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["blksize=32=1"].iter().map(|v| v.clone()))), "[Unknown(\"blksize=32=1\")]");
-        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["blksize=32"].iter().map(|v| v.clone()))), "[BlkSize(32)]");
-        assert_eq!(format!("{:?}", MountOption::to_vec(vec!["direct_io", "nodev,blksize=32"].iter().map(|v| v.clone()))), "[DirectIO, NoDev, BlkSize(32)]");
+        assert_eq!(
+            format!(
+                "{:?}",
+                MountOption::to_vec(vec!["direct_io", "nodev,exec"].iter().map(|v| v.clone()))
+            ),
+            "[DirectIO, NoDev, Exec]"
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
+                MountOption::to_vec(vec!["direct_io="].iter().map(|v| v.clone()))
+            ),
+            "[Unknown(\"direct_io=\")]"
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
+                MountOption::to_vec(vec!["direct_io=1"].iter().map(|v| v.clone()))
+            ),
+            "[Unknown(\"direct_io=1\")]"
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
+                MountOption::to_vec(vec!["direct_io=1=2"].iter().map(|v| v.clone()))
+            ),
+            "[Unknown(\"direct_io=1=2\")]"
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
+                MountOption::to_vec(vec!["undefined"].iter().map(|v| v.clone()))
+            ),
+            "[Unknown(\"undefined\")]"
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
+                MountOption::to_vec(vec!["undefined=foo"].iter().map(|v| v.clone()))
+            ),
+            "[Unknown(\"undefined=foo\")]"
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
+                MountOption::to_vec(vec!["dev="].iter().map(|v| v.clone()))
+            ),
+            "[Unknown(\"dev=\")]"
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
+                MountOption::to_vec(vec!["dev=1"].iter().map(|v| v.clone()))
+            ),
+            "[Unknown(\"dev=1\")]"
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
+                MountOption::to_vec(vec!["blksize"].iter().map(|v| v.clone()))
+            ),
+            "[Unknown(\"blksize\")]"
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
+                MountOption::to_vec(vec!["blksize="].iter().map(|v| v.clone()))
+            ),
+            "[Unknown(\"blksize=\")]"
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
+                MountOption::to_vec(vec!["blksize=xx"].iter().map(|v| v.clone()))
+            ),
+            "[Unknown(\"blksize=xx\")]"
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
+                MountOption::to_vec(vec!["blksize=32=1"].iter().map(|v| v.clone()))
+            ),
+            "[Unknown(\"blksize=32=1\")]"
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
+                MountOption::to_vec(vec!["blksize=32"].iter().map(|v| v.clone()))
+            ),
+            "[BlkSize(32)]"
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
+                MountOption::to_vec(
+                    vec!["direct_io", "nodev,blksize=32"]
+                        .iter()
+                        .map(|v| v.clone())
+                )
+            ),
+            "[DirectIO, NoDev, BlkSize(32)]"
+        );
     }
 
     #[test]
     fn convert_mount_options() {
-        assert_eq!(MountOption::NoDev.into_builtin(), Some(FuseMountOption::NoDev));
-        assert_eq!(MountOption::DirSync.into_builtin(), Some(FuseMountOption::DirSync));
+        assert_eq!(
+            MountOption::NoDev.into_builtin(),
+            Some(FuseMountOption::NoDev)
+        );
+        assert_eq!(
+            MountOption::DirSync.into_builtin(),
+            Some(FuseMountOption::DirSync)
+        );
         assert_eq!(MountOption::DirectIO.into_builtin(), None);
-        assert_eq!(MountOption::BlkSize (123) .into_builtin(), None);
+        assert_eq!(MountOption::BlkSize(123).into_builtin(), None);
     }
 
     #[test]
     fn format_mount_options() {
         assert_eq!(String::from(MountOption::NoDev), "nodev");
         assert_eq!(String::from(MountOption::DirectIO), "direct_io");
-        assert_eq!(String::from(MountOption::BlkSize (123)), "blksize=123");
-        assert_eq!(String::from(MountOption::BlkSize (0)), "blksize=0");
+        assert_eq!(String::from(MountOption::BlkSize(123)), "blksize=123");
+        assert_eq!(String::from(MountOption::BlkSize(0)), "blksize=0");
     }
 }
 

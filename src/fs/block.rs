@@ -1,7 +1,5 @@
-use super::tikv_fs::TiFs;
-
 type Block = Vec<u8>;
 
-pub fn empty_block() -> Block {
-    vec![0; TiFs::BLOCK_SIZE as usize]
+pub fn empty_block(block_size: u64) -> Block {
+    vec![0; block_size as usize]
 }

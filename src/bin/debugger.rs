@@ -8,6 +8,7 @@ use tracing_subscriber::EnvFilter;
 
 use tifs::fs::inode::Inode;
 use tifs::fs::key::{ScopedKey, ROOT_INODE};
+use tifs::fs::tikv_fs::TiFs;
 use tifs::fs::transaction::Txn;
 
 #[async_std::main]
@@ -68,7 +69,7 @@ impl Console {
     }
 
     async fn interact(&self) -> Result<bool> {
-        let mut txn = Txn::begin_optimistic(&self.client).await?;
+        let mut txn = Txn::begin_optimistic(&self.client, TiFs::DEFAULT_BLOCK_SIZE).await?;
         match self.interact_with_txn(&mut txn).await {
             Ok(exit) => {
                 txn.commit().await?;

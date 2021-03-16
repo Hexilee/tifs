@@ -1,6 +1,5 @@
 use super::error::{FsError, Result};
 use super::serialize::{deserialize, serialize, ENCODING};
-use super::tikv_fs::TiFs;
 use fuser::FileAttr;
 use libc::F_UNLCK;
 use serde::{Deserialize, Serialize};
@@ -23,13 +22,13 @@ pub struct Inode {
 }
 
 impl Inode {
-    fn update_blocks(&mut self) {
-        self.blocks = (self.size + TiFs::BLOCK_SIZE - 1) / TiFs::BLOCK_SIZE;
+    fn update_blocks(&mut self, block_size: u64) {
+        self.blocks = (self.size + block_size - 1) / block_size;
     }
 
-    pub fn set_size(&mut self, size: u64) {
+    pub fn set_size(&mut self, size: u64, block_size: u64) {
         self.size = size;
-        self.update_blocks();
+        self.update_blocks(block_size);
     }
 
     pub fn serialize(&self) -> Result<Vec<u8>> {

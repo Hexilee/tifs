@@ -13,7 +13,7 @@ use fuser::consts::FOPEN_DIRECT_IO;
 use fuser::*;
 use libc::{F_RDLCK, F_UNLCK, F_WRLCK, O_DIRECT, SEEK_CUR, SEEK_END, SEEK_SET};
 use tikv_client::{Config, TransactionClient};
-use tracing::{debug, info, instrument, trace, warn};
+use tracing::{debug, error, info, instrument, trace, warn};
 
 use super::dir::Directory;
 use super::error::{FsError, Result};
@@ -31,18 +31,15 @@ pub struct TiFs {
     pub config: Config,
     pub client: TransactionClient,
     pub direct_io: bool,
+    pub block_size: u64,
 }
 
 type BoxedFuture<'a, T> = Pin<Box<dyn 'a + Send + Future<Output = Result<T>>>>;
 
 impl TiFs {
     pub const SCAN_LIMIT: u32 = 1 << 10;
-    pub const BLOCK_SIZE: u64 = 1 << 16;
-    pub const BLOCK_CACHE: usize = 1 << 25;
-    pub const DIR_CACHE: usize = 1 << 24;
-    pub const INODE_CACHE: usize = 1 << 24;
+    pub const DEFAULT_BLOCK_SIZE: u64 = 1 << 16;
     pub const MAX_NAME_LEN: u32 = 1 << 8;
-    pub const INLINE_DATA_THRESHOLD: u64 = 1 << 12;
 
     #[instrument]
     pub async fn construct<S>(
@@ -65,6 +62,16 @@ impl TiFs {
                 .iter()
                 .find(|option| matches!(option, MountOption::DirectIO))
                 .is_some(),
+            block_size: options
+                .iter()
+                .find_map(|option| {
+                    if let MountOption::BlkSize(size) = option {
+                        Some(size << 10)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(Self::DEFAULT_BLOCK_SIZE),
         })
     }
 
@@ -92,7 +99,7 @@ impl TiFs {
         T: 'static + Send,
         F: for<'a> FnOnce(&'a TiFs, &'a mut Txn) -> BoxedFuture<'a, T>,
     {
-        let mut txn = Txn::begin_optimistic(&self.client).await?;
+        let mut txn = Txn::begin_optimistic(&self.client, self.block_size).await?;
         self.process_txn(&mut txn, f).await
     }
 
@@ -214,6 +221,14 @@ impl AsyncFileSystem for TiFs {
         self.spin_no_delay(move |fs, txn| {
             Box::pin(async move {
                 info!("initializing tifs on {:?} ...", &fs.pd_endpoints);
+                if let Some(meta) = txn.read_meta().await? {
+                    if meta.block_size != txn.block_size() {
+                        let err = FsError::block_size_conflict(meta.block_size, txn.block_size());
+                        error!("{}", err);
+                        return Err(err);
+                    }
+                }
+
                 let root_inode = txn.read_inode(ROOT_INODE).await;
                 if let Err(FsError::InodeNotFound { inode: _ }) = root_inode {
                     let attr = txn
@@ -280,7 +295,7 @@ impl AsyncFileSystem for TiFs {
                 };
                 attr.uid = uid.unwrap_or(attr.uid);
                 attr.gid = gid.unwrap_or(attr.gid);
-                attr.set_size(size.unwrap_or(attr.size));
+                attr.set_size(size.unwrap_or(attr.size), txn.block_size());
                 attr.atime = match atime {
                     None => attr.atime,
                     Some(TimeOrNow::SpecificTime(t)) => t,
@@ -587,7 +602,7 @@ impl AsyncFileSystem for TiFs {
     }
     // TODO: Find an api to calculate total and available space on tikv.
     async fn statfs(&self, _ino: u64) -> Result<StatFs> {
-        let bsize = Self::BLOCK_SIZE as u32;
+        let bsize = self.block_size as u32;
         let namelen = Self::MAX_NAME_LEN;
         let (ffree, blocks, files) = self
             .spin_no_delay(move |_, txn| {
