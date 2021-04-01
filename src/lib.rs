@@ -260,6 +260,13 @@ mod tests {
         assert_eq!(
             format!(
                 "{:?}",
+                MountOption::to_vec(vec!["tls=/root"].iter().map(|v| v.clone()))
+            ),
+            "[Tls(\"/root\")]"
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
                 MountOption::to_vec(
                     vec!["direct_io", "nodev,blksize=32"]
                         .iter()

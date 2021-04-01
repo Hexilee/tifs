@@ -11,10 +11,13 @@ RUN apt-get update && \
 
 # install toolchain
 RUN curl https://sh.rustup.rs -sSf | \
-    sh -s -- --default-toolchain nightly -y
+    sh -s -- --default-toolchain nightly-2020-11-23 -y
 ENV PATH=/root/.cargo/bin:$PATH
 
 WORKDIR /src
+COPY src/lib.rs src/lib.rs
+COPY Cargo.* ./
+RUN cargo fetch
 COPY . .
 RUN cargo build --features "binc" --no-default-features --all --release
 
