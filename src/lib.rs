@@ -4,11 +4,19 @@
 
 pub mod fs;
 
+use async_std::fs::read_to_string;
+use async_std::path::PathBuf;
 use fs::async_fs::AsyncFs;
 use fs::tikv_fs::TiFs;
 
 use fuser::MountOption as FuseMountOption;
 use paste::paste;
+
+const DEFAULT_CLIENT_CONFIG_PATH: &str = "~/.tifs/config.yaml";
+
+fn default_client_config_path() -> anyhow::Result<PathBuf> {
+    Ok(DEFAULT_CLIENT_CONFIG_PATH.parse()?)
+}
 
 macro_rules! define_options {
     {
@@ -126,6 +134,7 @@ define_options! { MountOption (FuseMountOption) {
     builtin DirSync,
     define "direct_io" DirectIO,
     define BlkSize(u64),
+    define ClientCfg(String),
 //    define "opt" OptionName(Display_Debug_Clone_PartialEq_FromStr_able)
 }}
 
@@ -228,6 +237,27 @@ mod tests {
         assert_eq!(
             format!(
                 "{:?}",
+                MountOption::to_vec(vec!["clientcfg"].iter().map(|v| v.clone()))
+            ),
+            "[Unknown(\"clientcfg\")]"
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
+                MountOption::to_vec(vec!["clientcfg="].iter().map(|v| v.clone()))
+            ),
+            "[ClientCfg(\"\")]"
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
+                MountOption::to_vec(vec!["clientcfg=xx"].iter().map(|v| v.clone()))
+            ),
+            "[ClientCfg(\"xx\")]"
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
                 MountOption::to_vec(
                     vec!["direct_io", "nodev,blksize=32"]
                         .iter()
@@ -281,7 +311,25 @@ where
 
     fuse_options.extend(MountOption::to_builtin(options.iter()));
 
-    let fs_impl = TiFs::construct(endpoints, Default::default(), options).await?;
+    let client_cfg_path = options
+        .iter()
+        .find_map(|opt| {
+            if let MountOption::ClientCfg(path) = opt {
+                Some(path.parse().map_err(Into::into))
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(default_client_config_path)?;
+
+    let client_cfg = if client_cfg_path.exists().await {
+        let client_cfg_contents = read_to_string(client_cfg_path).await?;
+        serde_yaml::from_str(&client_cfg_contents)?
+    } else {
+        Default::default()
+    };
+
+    let fs_impl = TiFs::construct(endpoints, client_cfg, options).await?;
 
     make_daemon()?;
 
