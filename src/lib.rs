@@ -8,14 +8,16 @@ use async_std::fs::read_to_string;
 use async_std::path::PathBuf;
 use fs::async_fs::AsyncFs;
 use fs::tikv_fs::TiFs;
-
 use fuser::MountOption as FuseMountOption;
 use paste::paste;
+use tracing::debug;
 
-const DEFAULT_CLIENT_CONFIG_PATH: &str = "~/.tifs/config.yaml";
+use fs::client::TlsConfig;
 
-fn default_client_config_path() -> anyhow::Result<PathBuf> {
-    Ok(DEFAULT_CLIENT_CONFIG_PATH.parse()?)
+const DEFAULT_TLS_CONFIG_PATH: &str = "~/.tifs/tls.toml";
+
+fn default_tls_config_path() -> anyhow::Result<PathBuf> {
+    Ok(DEFAULT_TLS_CONFIG_PATH.parse()?)
 }
 
 macro_rules! define_options {
@@ -134,7 +136,7 @@ define_options! { MountOption (FuseMountOption) {
     builtin DirSync,
     define "direct_io" DirectIO,
     define BlkSize(u64),
-    define ClientCfg(String),
+    define Tls(String),
 //    define "opt" OptionName(Display_Debug_Clone_PartialEq_FromStr_able)
 }}
 
@@ -237,23 +239,23 @@ mod tests {
         assert_eq!(
             format!(
                 "{:?}",
-                MountOption::to_vec(vec!["clientcfg"].iter().map(|v| v.clone()))
+                MountOption::to_vec(vec!["tls"].iter().map(|v| v.clone()))
             ),
-            "[Unknown(\"clientcfg\")]"
+            "[Unknown(\"tls\")]"
         );
         assert_eq!(
             format!(
                 "{:?}",
-                MountOption::to_vec(vec!["clientcfg="].iter().map(|v| v.clone()))
+                MountOption::to_vec(vec!["tls="].iter().map(|v| v.clone()))
             ),
-            "[ClientCfg(\"\")]"
+            "[Tls(\"\")]"
         );
         assert_eq!(
             format!(
                 "{:?}",
-                MountOption::to_vec(vec!["clientcfg=xx"].iter().map(|v| v.clone()))
+                MountOption::to_vec(vec!["tls=xx"].iter().map(|v| v.clone()))
             ),
-            "[ClientCfg(\"xx\")]"
+            "[Tls(\"xx\")]"
         );
         assert_eq!(
             format!(
@@ -311,24 +313,25 @@ where
 
     fuse_options.extend(MountOption::to_builtin(options.iter()));
 
-    let client_cfg_path = options
+    let tls_cfg_path = options
         .iter()
         .find_map(|opt| {
-            if let MountOption::ClientCfg(path) = opt {
+            if let MountOption::Tls(path) = opt {
                 Some(path.parse().map_err(Into::into))
             } else {
                 None
             }
         })
-        .unwrap_or_else(default_client_config_path)?;
+        .unwrap_or_else(default_tls_config_path)?;
 
-    let client_cfg = if client_cfg_path.exists().await {
-        let client_cfg_contents = read_to_string(client_cfg_path).await?;
-        serde_yaml::from_str(&client_cfg_contents)?
+    let client_cfg = if tls_cfg_path.exists().await {
+        let client_cfg_contents = read_to_string(tls_cfg_path).await?;
+        toml::from_str::<TlsConfig>(&client_cfg_contents)?.into()
     } else {
         Default::default()
     };
 
+    debug!("use tikv client config: {:?}", client_cfg);
     let fs_impl = TiFs::construct(endpoints, client_cfg, options).await?;
 
     make_daemon()?;

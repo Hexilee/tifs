@@ -22,4 +22,5 @@ FROM ubuntu:20.04
 RUN apt-get update
 RUN apt-get install -y libfuse3-dev fuse3 libssl-dev
 COPY --from=builder /src/target/release/tifs /tifs
-ENTRYPOINT ["/tifs"]
+COPY --from=builder /src/config-examples/tls.toml /tls.toml
+ENTRYPOINT ["/tifs", "-o", "tls=/tls.toml"]
