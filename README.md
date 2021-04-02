@@ -50,7 +50,7 @@ You should place them into a directory <cert dir> and execute following docker c
 ```bash
 docker run -d --device /dev/fuse \
     --cap-add SYS_ADMIN \
-    -v <cert dir>:/root/.tifs/tls
+    -v <cert dir>:/root/.tifs/tls \
     -v <mount point>:/mnt:shared \
     hexilee/tifs:0.1.0 --mount-point /mnt --pd-endpoints <endpoints>
 ```
