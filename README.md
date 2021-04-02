@@ -40,12 +40,35 @@ docker run -d --device /dev/fuse \
     hexilee/tifs:0.1.0 --mount-point /mnt --pd-endpoints <endpoints>
 ```
 
+#### TLS
+You need ca.crt, client.crt and client.key to access TiKV cluster on TLS. 
+
+> It will be convenient to get self-signed certificates by [sign-cert.sh](sign-cert.sh)(based on the [easy-rsa](https://github.com/OpenVPN/easy-rsa)).
+
+You should place them into a directory <cert dir> and execute following docker command.
+
+```bash
+docker run -d --device /dev/fuse \
+    --cap-add SYS_ADMIN \
+    -v <cert dir>:/root/.tifs/tls
+    -v <mount point>:/mnt:shared \
+    hexilee/tifs:0.1.0 --mount-point /mnt --pd-endpoints <endpoints>
+```
+
 ### Binary
 
 ```bash
 mkdir <mount point>
 mount -t tifs tifs:<pd endpoints> <mount point>
 ```
+
+#### TLS
+
+```bash
+mount -t tifs -o tls=<tls config file> tifs:<pd endpoints> <mount point>
+```
+
+By default, the tls-config should be located in `~/.tifs/tls.toml`, refer to the [tls.toml](config-examples/tls.toml) for detailed configuration.
 
 ## Development
 
