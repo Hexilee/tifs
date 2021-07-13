@@ -1259,6 +1259,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "parse-size"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "944553dd59c802559559161f9816429058b869003836120e262e8caec061b7ae"
+
+[[package]]
 name = "paste"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1866,6 +1872,7 @@ dependencies = [
  "futures 0.3.10",
  "libc",
  "lru",
+ "parse-size",
  "paste",
  "serde",
  "serde_json",

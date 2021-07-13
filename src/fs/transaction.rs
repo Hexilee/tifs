@@ -16,11 +16,13 @@ use super::inode::Inode;
 use super::key::{ScopedKey, ROOT_INODE};
 use super::meta::Meta;
 use super::mode::{as_file_kind, as_file_perm, make_mode};
-use super::reply::DirItem;
+use super::reply::{DirItem, StatFs};
 
 pub struct Txn {
     txn: Transaction,
     block_size: u64,
+    max_blocks: Option<u64>,
+    max_name_len: u32,
 }
 
 impl Txn {
@@ -34,10 +36,26 @@ impl Txn {
         self.block_size
     }
 
-    pub async fn begin_optimistic(client: &TransactionClient, block_size: u64) -> Result<Self> {
+    fn check_space_left(&self, meta: &Meta) -> Result<()> {
+        match meta.last_stat {
+            Some(ref stat) if stat.bavail == 0 => {
+                Err(FsError::NoSpaceLeft(stat.bsize as u64 * stat.blocks))
+            }
+            _ => Ok(()),
+        }
+    }
+
+    pub async fn begin_optimistic(
+        client: &TransactionClient,
+        block_size: u64,
+        max_size: Option<u64>,
+        max_name_len: u32,
+    ) -> Result<Self> {
         Ok(Txn {
             txn: client.begin_optimistic().await?,
             block_size,
+            max_blocks: max_size.map(|size| size / block_size),
+            max_name_len,
         })
     }
 
@@ -112,6 +130,7 @@ impl Txn {
             .read_meta()
             .await?
             .unwrap_or_else(|| Meta::new(self.block_size));
+        self.check_space_left(&meta)?;
         let ino = meta.inode_next;
         meta.inode_next += 1;
 
@@ -373,6 +392,8 @@ impl Txn {
 
     pub async fn write_data(&mut self, ino: u64, start: u64, data: Bytes) -> Result<usize> {
         debug!("write data at ({})[{}]", ino, start);
+        self.check_space_left(&self.read_meta().await?.unwrap())?;
+
         let mut inode = self.read_inode(ino).await?;
         let size = data.len();
         let target = start + size as u64;
@@ -586,6 +607,50 @@ impl Txn {
         self.save_inode(&inode).await?;
         self.put(ScopedKey::block(ino, 0), data).await?;
         Ok(inode)
+    }
+
+    pub async fn statfs(&mut self) -> Result<StatFs> {
+        let bsize = self.block_size as u32;
+        let mut meta = self
+            .read_meta()
+            .await?
+            .expect("meta should not be none after fs initialized");
+        let next_inode = meta.inode_next;
+        let (used_blocks, files) = self
+            .scan(
+                ScopedKey::inode_range(ROOT_INODE..next_inode),
+                (next_inode - ROOT_INODE) as u32,
+            )
+            .await?
+            .map(|pair| Inode::deserialize(pair.value()))
+            .try_fold((0, 0), |(blocks, files), inode| {
+                Ok::<_, FsError>((blocks + inode?.blocks, files + 1))
+            })?;
+        let ffree = std::u64::MAX - next_inode;
+        let bfree = match self.max_blocks {
+            Some(max_blocks) if max_blocks > used_blocks => max_blocks - used_blocks,
+            Some(_) => 0,
+            None => std::u64::MAX,
+        };
+        let blocks = match self.max_blocks {
+            Some(max_blocks) => max_blocks,
+            None => used_blocks,
+        };
+
+        let stat = StatFs::new(
+            blocks,
+            bfree,
+            bfree,
+            files,
+            ffree,
+            bsize,
+            self.max_name_len,
+            0,
+        );
+        trace!("statfs: {:?}", stat);
+        meta.last_stat = Some(stat.clone());
+        self.save_meta(&meta).await?;
+        Ok(stat)
     }
 }
 

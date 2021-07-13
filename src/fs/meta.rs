@@ -2,12 +2,14 @@ use serde::{Deserialize, Serialize};
 
 use super::error::{FsError, Result};
 use super::key::ROOT_INODE;
+use super::reply::StatFs;
 use super::serialize::{deserialize, serialize, ENCODING};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct Meta {
     pub inode_next: u64,
     pub block_size: u64,
+    pub last_stat: Option<StatFs>,
 }
 
 impl Meta {
@@ -15,6 +17,7 @@ impl Meta {
         Self {
             inode_next: ROOT_INODE,
             block_size,
+            last_stat: None,
         }
     }
 

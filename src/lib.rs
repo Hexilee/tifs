@@ -136,6 +136,7 @@ define_options! { MountOption (FuseMountOption) {
     builtin DirSync,
     define "direct_io" DirectIO,
     define BlkSize(u64),
+    define MaxSize(String), // size of filesystem
     define Tls(String),
 //    define "opt" OptionName(Display_Debug_Clone_PartialEq_FromStr_able)
 }}

@@ -66,6 +66,9 @@ pub enum FsError {
 
     #[error("block size conflicts: origin({origin}) != new({new})")]
     BlockSizeConflict { origin: u64, new: u64 },
+
+    #[error("no space left: MaxSize({0})")]
+    NoSpaceLeft(u64),
 }
 
 pub type Result<T> = std::result::Result<T, FsError>;
@@ -123,6 +126,7 @@ impl Into<libc::c_int> for FsError {
             RetryTimesExcess(_) => libc::EAGAIN,
             InvalidStr => libc::EINVAL,
             BlockSizeConflict { origin: _, new: _ } => libc::EINVAL,
+            NoSpaceLeft(_) => libc::ENOSPC,
             _ => libc::EFAULT,
         }
     }

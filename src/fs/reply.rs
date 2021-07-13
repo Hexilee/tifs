@@ -114,7 +114,7 @@ impl DirPlus {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub struct StatFs {
     pub blocks: u64,
     pub bfree: u64,
@@ -125,6 +125,7 @@ pub struct StatFs {
     pub namelen: u32,
     pub frsize: u32,
 }
+
 impl StatFs {
     pub fn new(
         blocks: u64,

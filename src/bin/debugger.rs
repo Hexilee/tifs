@@ -69,7 +69,13 @@ impl Console {
     }
 
     async fn interact(&self) -> Result<bool> {
-        let mut txn = Txn::begin_optimistic(&self.client, TiFs::DEFAULT_BLOCK_SIZE).await?;
+        let mut txn = Txn::begin_optimistic(
+            &self.client,
+            TiFs::DEFAULT_BLOCK_SIZE,
+            None,
+            TiFs::MAX_NAME_LEN,
+        )
+        .await?;
         match self.interact_with_txn(&mut txn).await {
             Ok(exit) => {
                 txn.commit().await?;
