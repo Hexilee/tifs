@@ -70,6 +70,31 @@ mount -t tifs -o tls=<tls config file> tifs:<pd endpoints> <mount point>
 
 By default, the tls-config should be located in `~/.tifs/tls.toml`, refer to the [tls.toml](config-examples/tls.toml) for detailed configuration.
 
+## Other Custom Mount Options
+
+### `direct_io`
+
+Enable global direct io, to avoid page cache.
+
+```bash
+mount -t tifs -o direct_io tifs:<pd endpoints> <mount point>
+```
+### `blksize`
+
+Set block size in KiB, 64 by default.
+
+```bash
+mount -t tifs -o blksize=4 tifs:<pd endpoints> <mount point>
+```
+
+### `maxsize`
+
+The quota of fs capacity, could be human-readable.
+
+```bash
+mount -t tifs -o maxsize=1GiB tifs:<pd endpoints> <mount point>
+```
+
 ## Development
 
 ```bash
