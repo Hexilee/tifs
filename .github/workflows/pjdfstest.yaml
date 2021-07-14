@@ -18,7 +18,7 @@ jobs:
       - name: Mount
         run: docker-compose up -d tifs
       - name: Stat
-        run: stat /mnt/tifs
+        run: df -h
       - name: Build pjdfstest
         run: |
           git clone https://github.com/pjd/pjdfstest.git
@@ -30,7 +30,7 @@ jobs:
         uses: actions/checkout@v2
       - name: Test
         run: |
-          cd /mnt/tifs
+          cd ~/mnt/tifs
           sudo prove -rv $GITHUB_WORKSPACE/pjdfstest/tests
 
 
