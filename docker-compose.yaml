@@ -1,0 +1,45 @@
+version: "3.9"
+
+networks:
+  tifs:
+
+services:
+  pd:
+    image: pingcap/pd:latest
+    networks:
+      tifs:
+    command:
+      - --name=pd
+      - --client-urls=http://0.0.0.0:2379
+      - --peer-urls=http://0.0.0.0:2380
+      - --advertise-client-urls=http://pd:2379
+      - --advertise-peer-urls=http://pd:2380
+      - --initial-cluster=pd=http://pd:2380
+      - --data-dir=/data
+
+  tikv:
+    image: pingcap/tikv:latest
+    networks:
+      tifs:
+    depends_on:
+      - pd
+    command:
+      - --addr=0.0.0.0:20160
+      - --advertise-addr=tikv:20160
+      - --data-dir=/data
+      - --pd=pd:2379
+
+  tifs:
+    image: tifs:latest
+    networks:
+      tifs:
+    depends_on:
+      - tikv
+    devices:
+      - "/dev/fuse:/dev/fuse"
+    volumes:
+      - /mnt/tifs:/mnt/tifs:shared
+    privileged: true
+    command:
+      - --mount-point=/mnt/tifs
+      - --pd-endpoints=http://pd:2379

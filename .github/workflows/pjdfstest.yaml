@@ -6,35 +6,19 @@ jobs:
   test:
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v2
-      - name: Install packages
-        run: |
-          sudo apt update
-          sudo apt install -y libfuse-dev libfuse3-dev build-essential autoconf automake perl
-      - uses: actions-rs/toolchain@v1
+      - name: Check out the repo
+        uses: actions/checkout@v2
+      - name: Build Docker Image
+        uses: docker/build-push-action@v1
         with:
-          toolchain: stable
-          components: rustfmt, clippy
-      - name: Build
-        run: cargo build --features "binc" --no-default-features --all --release
-      - name: Deploy tikv cluster
-        run: |
-          cd ci
-          mkdir data
-          mkdir logs
-          docker-compose up -d
-          sleep 10
-      - name: Stat
-        run: |
-          cd ci
-          docker-compose ps
+          push: false
+          tags: tifs:latest
+      - name: Up TiKV
+        run: docker-compose up -d pd tikv
       - name: Mount
-        run: |
-          mkdir mnt
-          stat mnt
-          target/release/mount tifs:127.0.0.1:2379 mnt
-          stat mnt
-      
+        run: docker-compose up -d tifs
+      - name: Stat
+        run: stat /mnt/tifs
       - name: Build pjdfstest
         run: |
           git clone https://github.com/pjd/pjdfstest.git
@@ -42,9 +26,11 @@ jobs:
           autoreconf -ifs
           ./configure
           make pjdfstest
+      - name: Check out the repo
+        uses: actions/checkout@v2
       - name: Test
         run: |
-          cd mnt
+          cd /mnt/tifs
           sudo prove -rv $GITHUB_WORKSPACE/pjdfstest/tests
 
 

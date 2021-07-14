@@ -154,11 +154,11 @@ Please refer to the [tikv-deploy.md](contribution/tikv-deploy.md).
     - [x] getlk
     - [x] setlk
 
-- [ ] Testing and Benchmarking
+- [x] Testing and Benchmarking
     - [x] pjdfstest
-    - [ ] fio
+    - [x] fio
 
-- [ ] Real-world usage
+- [x] Real-world usage
     - [x] vim
     - [x] emacs
     - [x] git
@@ -167,5 +167,5 @@ Please refer to the [tikv-deploy.md](contribution/tikv-deploy.md).
     - [x] cargo build
     - [x] npm install
     - [x] sqlite
-    - [ ] tikv on tifs
+    - [x] tikv on tifs
     - [x] client runs on FreeBSD: simple case works
