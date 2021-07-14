@@ -30,7 +30,7 @@ services:
       - --pd=pd:2379
 
   tifs:
-    image: tifs:latest
+    image: hexilee/tifs:ci
     networks:
       tifs:
     depends_on:
