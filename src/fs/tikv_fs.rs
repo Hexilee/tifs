@@ -11,7 +11,7 @@ use bytes::Bytes;
 use bytestring::ByteString;
 use fuser::consts::FOPEN_DIRECT_IO;
 use fuser::*;
-use libc::{F_RDLCK, F_UNLCK, F_WRLCK, O_DIRECT, SEEK_CUR, SEEK_END, SEEK_SET};
+use libc::{F_RDLCK, F_UNLCK, F_WRLCK, SEEK_CUR, SEEK_END, SEEK_SET};
 use parse_size::parse_size;
 use tikv_client::{Config, TransactionClient};
 use tracing::{debug, error, info, instrument, trace, warn};
@@ -165,7 +165,13 @@ impl TiFs {
         Ok(ino.file_attr)
     }
 
-    async fn setlkw(&self, ino: u64, lock_owner: u64, typ: i32) -> Result<bool> {
+    async fn setlkw(
+        &self,
+        ino: u64,
+        lock_owner: u64,
+        #[cfg(target_os = "linux")] typ: i32,
+        #[cfg(any(target_os = "freebsd", target_os = "macos"))] typ: i16,
+    ) -> Result<bool> {
         loop {
             let res = self
                 .spin_no_delay(move |_, txn| {
@@ -237,6 +243,7 @@ impl AsyncFileSystem for TiFs {
         // config
         //     .add_capabilities(fuser::consts::FUSE_POSIX_LOCKS)
         //     .expect("kernel config failed to add cap_fuse FUSE_POSIX_LOCKS");
+        #[cfg(not(target_os = "macos"))]
         config
             .add_capabilities(fuser::consts::FUSE_FLOCK_LOCKS)
             .expect("kernel config failed to add cap_fuse FUSE_CAP_FLOCK_LOCKS");
@@ -379,10 +386,14 @@ impl AsyncFileSystem for TiFs {
             .await?;
 
         let mut open_flags = 0;
-        if self.direct_io || flags | O_DIRECT != 0 {
+        #[cfg(target_os = "linux")]
+        if self.direct_io || flags | libc::O_DIRECT != 0 {
             open_flags |= FOPEN_DIRECT_IO;
         }
-
+        #[cfg(not(target_os = "linux"))]
+        if self.direct_io {
+            open_flags |= FOPEN_DIRECT_IO;
+        }
         Ok(Open::new(fh, open_flags))
     }
 
@@ -641,6 +652,8 @@ impl AsyncFileSystem for TiFs {
         pid: u32,
         sleep: bool,
     ) -> Result<()> {
+        #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+        let typ = typ as i16;
         let not_again = self.spin_no_delay(move |_, txn| {
             Box::pin(async move {
                 let mut inode = txn.read_inode(ino).await?;
@@ -735,7 +748,7 @@ impl AsyncFileSystem for TiFs {
             Box::pin(async move {
                 let inode = txn.read_inode(ino).await?;
                 warn!("getlk, inode:{:?}, pid:{:?}", inode, pid);
-                Ok(Lock::_new(0, 0, inode.lock_state.lk_type, 0))
+                Ok(Lock::_new(0, 0, inode.lock_state.lk_type.into(), 0))
             })
         })
         .await

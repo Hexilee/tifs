@@ -9,7 +9,10 @@ use std::ops::{Deref, DerefMut};
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct LockState {
     pub owner_set: HashSet<u64>,
+    #[cfg(target_os = "linux")]
     pub lk_type: i32,
+    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+    pub lk_type: i16,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -87,7 +90,12 @@ impl DerefMut for Inode {
 }
 
 impl LockState {
+    #[cfg(target_os = "linux")]
     pub fn new(owner_set: HashSet<u64>, lk_type: i32) -> LockState {
+        LockState { owner_set, lk_type }
+    }
+    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+    pub fn new(owner_set: HashSet<u64>, lk_type: i16) -> LockState {
         LockState { owner_set, lk_type }
     }
 }

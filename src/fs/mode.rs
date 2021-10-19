@@ -4,7 +4,7 @@ pub const fn as_file_perm(mode: u32) -> u16 {
     (mode & !(libc::S_ISUID | libc::S_ISGID) as u32) as _
 }
 
-#[cfg(target_os = "freebsd")]
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
 pub fn as_file_kind(mode: u32) -> FileType {
     use FileType::*;
 
@@ -36,7 +36,7 @@ pub fn as_file_kind(mode: u32) -> FileType {
     }
 }
 
-#[cfg(target_os = "freebsd")]
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
 pub fn make_mode(tpy: FileType, perm: u16) -> u32 {
     use FileType::*;
 
