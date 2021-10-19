@@ -1,8 +1,9 @@
 use std::ffi::OsStr;
 use std::fmt::Debug;
+use std::future::Future;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::SystemTime;
-use std::{future::Future, path::Path};
 
 use async_std::task::{block_on, spawn};
 use async_trait::async_trait;

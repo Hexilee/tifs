@@ -1,9 +1,7 @@
 use clap::{crate_version, App, Arg};
-use tracing_subscriber::EnvFilter;
-
-use tifs::mount_tifs_daemonize;
-use tifs::MountOption;
+use tifs::{mount_tifs_daemonize, MountOption};
 use tracing::{debug, info, trace};
+use tracing_subscriber::EnvFilter;
 
 #[async_std::main]
 async fn main() {
@@ -156,11 +154,11 @@ async fn main() {
 
     mount_tifs_daemonize(mountpoint, endpoints, options, move || {
         if serve {
+            use std::ffi::CString;
+            use std::io::{Error, Write};
+
             use anyhow::bail;
             use libc;
-            use std::ffi::CString;
-            use std::io::Error;
-            use std::io::Write;
 
             debug!("Using log file: {:?}", logfile);
 

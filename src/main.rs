@@ -1,8 +1,6 @@
 use clap::{crate_version, App, Arg};
+use tifs::{mount_tifs, MountOption};
 use tracing_subscriber::EnvFilter;
-
-use tifs::mount_tifs;
-use tifs::MountOption;
 
 #[async_std::main]
 async fn main() {

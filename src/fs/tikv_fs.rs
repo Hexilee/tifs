@@ -16,14 +16,15 @@ use parse_size::parse_size;
 use tikv_client::{Config, TransactionClient};
 use tracing::{debug, error, info, instrument, trace, warn};
 
+use super::async_fs::AsyncFileSystem;
 use super::dir::Directory;
 use super::error::{FsError, Result};
 use super::key::ROOT_INODE;
 use super::mode::make_mode;
-use super::reply::get_time;
-use super::reply::{Attr, Create, Data, Dir, DirItem, Entry, Lseek, Open, StatFs, Write};
+use super::reply::{
+    get_time, Attr, Create, Data, Dir, DirItem, Entry, Lock, Lseek, Open, StatFs, Write,
+};
 use super::transaction::Txn;
-use super::{async_fs::AsyncFileSystem, reply::Lock};
 use crate::MountOption;
 
 pub struct TiFs {

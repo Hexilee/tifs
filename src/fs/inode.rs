@@ -1,10 +1,12 @@
-use super::error::{FsError, Result};
-use super::serialize::{deserialize, serialize, ENCODING};
+use std::collections::HashSet;
+use std::ops::{Deref, DerefMut};
+
 use fuser::FileAttr;
 use libc::F_UNLCK;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
-use std::ops::{Deref, DerefMut};
+
+use super::error::{FsError, Result};
+use super::serialize::{deserialize, serialize, ENCODING};
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct LockState {

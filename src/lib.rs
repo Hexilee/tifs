@@ -7,12 +7,11 @@ pub mod fs;
 use async_std::fs::read_to_string;
 use async_std::path::PathBuf;
 use fs::async_fs::AsyncFs;
+use fs::client::TlsConfig;
 use fs::tikv_fs::TiFs;
 use fuser::MountOption as FuseMountOption;
 use paste::paste;
 use tracing::debug;
-
-use fs::client::TlsConfig;
 
 const DEFAULT_TLS_CONFIG_PATH: &str = "~/.tifs/tls.toml";
 

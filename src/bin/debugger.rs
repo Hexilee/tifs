@@ -3,13 +3,12 @@ use std::io::{stdin, stdout, BufRead, BufReader, Write};
 
 use anyhow::{anyhow, Result};
 use clap::{crate_version, App, Arg};
-use tikv_client::TransactionClient;
-use tracing_subscriber::EnvFilter;
-
 use tifs::fs::inode::Inode;
 use tifs::fs::key::{ScopedKey, ROOT_INODE};
 use tifs::fs::tikv_fs::TiFs;
 use tifs::fs::transaction::Txn;
+use tikv_client::TransactionClient;
+use tracing_subscriber::EnvFilter;
 
 #[async_std::main]
 async fn main() -> Result<()> {
