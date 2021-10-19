@@ -11,7 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Create Release
-        id: create_release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -37,17 +36,12 @@ jobs:
       - name: Build
         run: |
           make release
-          tar -czvf ./tifs.tar.gz install.sh ./target/release/tifs ./target/release/mount
+          tar -czvf ./tifs-linux-amd64.tar.gz install.sh ./target/release/tifs ./target/release/mount
       - name: Upload Release Asset
-        id: upload-release-asset 
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          upload_url: ${{ jobs.release.steps.create_release.outputs.upload_url }} 
-          asset_path: ./tifs.tar.gz
-          asset_name: tifs-linux-amd64.tar.gz
-          asset_content_type: application/zip
+          files: tifs-linux-amd64.tar.gz
   macOS:
     name: Create MacOS Release
     runs-on: macos-10.15
@@ -67,14 +61,9 @@ jobs:
       - name: Build
         run: |
           make release
-          tar -czvf ./tifs.tar.gz install.sh ./target/release/tifs ./target/release/mount
+          tar -czvf ./tifs-darwin-amd64.tar.gz install.sh ./target/release/tifs ./target/release/mount
       - name: Upload Release Asset
-        id: upload-release-asset 
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          upload_url: ${{ jobs.release.steps.create_release.outputs.upload_url }} 
-          asset_path: ./tifs.tar.gz
-          asset_name: tifs-darwin-amd64.tar.gz
-          asset_content_type: application/zip
+          files: tifs-darwin-amd64.tar.gz
