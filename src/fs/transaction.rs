@@ -96,10 +96,7 @@ impl Txn {
         let handler = self.read_fh(ino, fh).await?;
         let start = handler.cursor as i64 + offset;
         if start < 0 {
-            return Err(FsError::InvalidOffset {
-                ino: ino,
-                offset: start,
-            });
+            return Err(FsError::InvalidOffset { ino, offset: start });
         }
         self.read_data(ino, start as u64, Some(size as u64)).await
     }
@@ -108,10 +105,7 @@ impl Txn {
         let handler = self.read_fh(ino, fh).await?;
         let start = handler.cursor as i64 + offset;
         if start < 0 {
-            return Err(FsError::InvalidOffset {
-                ino: ino,
-                offset: start,
-            });
+            return Err(FsError::InvalidOffset { ino, offset: start });
         }
 
         self.write_data(ino, start as u64, data).await

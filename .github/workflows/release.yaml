@@ -10,20 +10,6 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-      - name: Install packages
-        run: |
-          sudo apt update
-          sudo apt install -y libfuse-dev libfuse3-dev build-essential
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly-2021-06-01
-          components: rustfmt, clippy
-      - name: Build
-        run: |
-          make release
-          tar -czvf ./tifs.tar.gz install.sh ./target/release/tifs ./target/release/mount
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
@@ -34,13 +20,3 @@ jobs:
           release_name: Release ${{ github.ref }}
           draft: false
           prerelease: false
-      - name: Upload Release Asset
-        id: upload-release-asset 
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }} 
-          asset_path: ./tifs.tar.gz
-          asset_name: tifs-linux-amd64.tar.gz
-          asset_content_type: application/zip

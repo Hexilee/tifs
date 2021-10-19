@@ -22,7 +22,7 @@ use super::error::{FsError, Result};
 use super::key::ROOT_INODE;
 use super::mode::make_mode;
 use super::reply::{
-    get_time, Attr, Create, Data, Dir, DirItem, Entry, Lock, Lseek, Open, StatFs, Write,
+    get_time, Attr, Create, Data, Dir, DirItem, Entry, Lock, Lseek, Open, StatFs, Write, Xattr,
 };
 use super::transaction::Txn;
 use crate::MountOption;
@@ -753,5 +753,50 @@ impl AsyncFileSystem for TiFs {
             })
         })
         .await
+    }
+
+    /// Set an extended attribute.
+    async fn setxattr(
+        &self,
+        _ino: u64,
+        _name: ByteString,
+        _value: Vec<u8>,
+        _flags: i32,
+        _position: u32,
+    ) -> Result<()> {
+        // TODO: implement me
+        Ok(())
+    }
+
+    /// Get an extended attribute.
+    /// If `size` is 0, the size of the value should be sent with `reply.size()`.
+    /// If `size` is not 0, and the value fits, send it with `reply.data()`, or
+    /// `reply.error(ERANGE)` if it doesn't.
+    async fn getxattr(&self, _ino: u64, _name: ByteString, size: u32) -> Result<Xattr> {
+        // TODO: implement me
+        if size == 0 {
+            Ok(Xattr::size(0))
+        } else {
+            Ok(Xattr::data(Vec::new()))
+        }
+    }
+
+    /// List extended attribute names.
+    /// If `size` is 0, the size of the value should be sent with `reply.size()`.
+    /// If `size` is not 0, and the value fits, send it with `reply.data()`, or
+    /// `reply.error(ERANGE)` if it doesn't.
+    async fn listxattr(&self, _ino: u64, size: u32) -> Result<Xattr> {
+        // TODO: implement me
+        if size == 0 {
+            Ok(Xattr::size(0))
+        } else {
+            Ok(Xattr::data(Vec::new()))
+        }
+    }
+
+    /// Remove an extended attribute.
+    async fn removexattr(&self, _ino: u64, _name: ByteString) -> Result<()> {
+        // TODO: implement me
+        Ok(())
     }
 }
