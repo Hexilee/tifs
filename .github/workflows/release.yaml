@@ -44,7 +44,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ release.steps.create_release.outputs.upload_url }} 
+          upload_url: ${{ jobs.release.steps.create_release.outputs.upload_url }} 
           asset_path: ./tifs.tar.gz
           asset_name: tifs-linux-amd64.tar.gz
           asset_content_type: application/zip
@@ -74,7 +74,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ release.steps.create_release.outputs.upload_url }} 
+          upload_url: ${{ jobs.release.steps.create_release.outputs.upload_url }} 
           asset_path: ./tifs.tar.gz
           asset_name: tifs-darwin-amd64.tar.gz
           asset_content_type: application/zip
