@@ -9,12 +9,12 @@ A distributed POSIX filesystem based on TiKV, with partition tolerance and stric
 ### Container
 You can use the image on [docker hub](https://hub.docker.com/repository/docker/hexilee/tifs) or build from the [Dockerfile](Dockerfile).
 
-### Binary(linux-amd64 only)
+### Binary(linux-amd64 or darwin-amd64)
 
 ```bash
 mkdir tmp
 cd tmp
-wget https://github.com/Hexilee/tifs/releases/download/v0.1.0/tifs-linux-amd64.tar.gz
+wget https://github.com/Hexilee/tifs/releases/download/v0.2.2/tifs-linux-amd64.tar.gz
 tar -xvf tifs-linux-amd64.tar.gz
 sudo ./install.sh
 ```
@@ -24,8 +24,7 @@ sudo ./install.sh
 ```bash
 git clone https://github.com/Hexilee/tifs.git
 cd tifs
-cargo build --features "binc" --no-default-features --release
-sudo install target/release/mount /sbin/mount.tifs
+sudo make install
 ```
 
 ## Usage
@@ -37,7 +36,7 @@ You need a tikv cluster to run tifs. [tiup](https://github.com/pingcap/tiup) is 
 docker run -d --device /dev/fuse \
     --cap-add SYS_ADMIN \
     -v <mount point>:/mnt:shared \
-    hexilee/tifs:0.1.0 --mount-point /mnt --pd-endpoints <endpoints>
+    hexilee/tifs:0.2.2 --mount-point /mnt --pd-endpoints <endpoints>
 ```
 
 #### TLS
@@ -52,7 +51,7 @@ docker run -d --device /dev/fuse \
     --cap-add SYS_ADMIN \
     -v <cert dir>:/root/.tifs/tls \
     -v <mount point>:/mnt:shared \
-    hexilee/tifs:0.1.0 --mount-point /mnt --pd-endpoints <endpoints>
+    hexilee/tifs:0.2.2 --mount-point /mnt --pd-endpoints <endpoints>
 ```
 
 ### Binary
