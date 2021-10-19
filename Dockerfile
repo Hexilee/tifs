@@ -11,7 +11,7 @@ RUN apt-get update && \
 
 # install toolchain
 RUN curl https://sh.rustup.rs -sSf | \
-    sh -s -- --default-toolchain nightly-2020-11-23 -y
+    sh -s -- --default-toolchain nightly-2021-06-01 -y
 ENV PATH=/root/.cargo/bin:$PATH
 
 WORKDIR /src
