@@ -44,7 +44,7 @@ jobs:
           files: tifs-linux-amd64.tar.gz
   macOS:
     name: Create MacOS Release
-    runs-on: macos-10.15
+    runs-on: macos-11
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
