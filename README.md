@@ -4,6 +4,42 @@ A distributed POSIX filesystem based on TiKV, with partition tolerance and stric
 
 [![pjdfstest](https://github.com/Hexilee/tifs/workflows/pjdfstest/badge.svg)](https://github.com/Hexilee/tifs/actions)
 
+## Environment
+
+### Build 
+
+- Linux
+`libfuse` and `build-essential` are required, in ubuntu/debian:
+
+```
+sudo apt install -y libfuse-dev libfuse3-dev build-essential
+```
+
+- macOS
+```
+brew install --cask osxfuse
+```
+
+### Runtime
+- Linux
+`fuse3` and `openssl` are required, in ubuntu/debian:
+
+```
+sudo apt-get install -y libfuse3-dev fuse3 libssl-dev
+```
+
+- macOS
+
+```
+brew install --cask osxfuse
+```
+
+In Catalina or former version, you need to load osxfuse into the kernel:
+
+```
+/Library/Filesystems/osxfuse.fs/Contents/Resources/load_osxfuse
+```
+
 ## Installation
 
 ### Container
@@ -14,7 +50,7 @@ You can use the image on [docker hub](https://hub.docker.com/repository/docker/h
 ```bash
 mkdir tmp
 cd tmp
-wget https://github.com/Hexilee/tifs/releases/download/v0.2.2/tifs-linux-amd64.tar.gz
+wget https://github.com/Hexilee/tifs/releases/download/v0.2.1/tifs-linux-amd64.tar.gz
 tar -xvf tifs-linux-amd64.tar.gz
 sudo ./install.sh
 ```
