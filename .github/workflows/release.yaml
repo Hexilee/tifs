@@ -51,9 +51,6 @@ jobs:
       - name: Install packages
         run: |
           brew update > /dev/null && brew install --cask osxfuse
-      - name: Start fuse
-        run: |
-          /Library/Filesystems/osxfuse.fs/Contents/Resources/load_osxfuse
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly-2021-06-01
