@@ -125,10 +125,10 @@ mount -t tifs -o direct_io tifs:<pd endpoints> <mount point>
 ```
 ### `blksize`
 
-Set block size in KiB, 64 by default.
+The block size, 64KiB by default, could be human-readable.
 
 ```bash
-mount -t tifs -o blksize=4 tifs:<pd endpoints> <mount point>
+mount -t tifs -o blksize=512 tifs:<pd endpoints> <mount point>
 ```
 
 ### `maxsize`

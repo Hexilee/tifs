@@ -3,7 +3,7 @@ use tifs::{mount_tifs_daemonize, MountOption};
 use tracing::{debug, info, trace};
 use tracing_subscriber::EnvFilter;
 
-#[async_std::main]
+#[tokio::main]
 async fn main() {
     let matches = App::new("mount.tifs")
         .version(crate_version!())

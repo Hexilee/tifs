@@ -5,7 +5,6 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use async_std::task::{block_on, spawn};
 use async_trait::async_trait;
 use bytestring::ByteString;
 use fuser::{
@@ -13,6 +12,8 @@ use fuser::{
     ReplyDirectoryPlus, ReplyEmpty, ReplyEntry, ReplyLock, ReplyLseek, ReplyOpen, ReplyStatfs,
     ReplyWrite, ReplyXattr, Request, TimeOrNow,
 };
+use tokio::runtime::Handle;
+use tokio::task::{block_in_place, spawn};
 use tracing::trace;
 
 use super::error::{FsError, Result};
@@ -31,6 +32,13 @@ where
         let result = f.await;
         reply.reply(id, result);
     });
+}
+
+fn block_on<F, T>(future: F) -> T
+where
+    F: Future<Output = T>,
+{
+    block_in_place(move || Handle::current().block_on(future))
 }
 
 #[allow(clippy::too_many_arguments)]

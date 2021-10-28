@@ -10,7 +10,7 @@ use tifs::fs::transaction::Txn;
 use tikv_client::TransactionClient;
 use tracing_subscriber::EnvFilter;
 
-#[async_std::main]
+#[tokio::main]
 async fn main() -> Result<()> {
     let matches = App::new("TiFS Debugger")
         .version(crate_version!())

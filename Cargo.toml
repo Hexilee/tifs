@@ -8,7 +8,7 @@ version = "0.2.1"
 
 [dependencies]
 anyhow = "1.0"
-async-std = {version = "1.7.0", features = ["attributes"]}
+tokio = {version = "1.12", features = ["macros", "rt", "time", "fs"]}
 async-trait = "0.1"
 bytes = "1.0"
 bytestring = "1.0"

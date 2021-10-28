@@ -3,13 +3,14 @@
 
 pub mod fs;
 
-use async_std::fs::read_to_string;
-use async_std::path::PathBuf;
+use std::path::PathBuf;
+
 use fs::async_fs::AsyncFs;
 use fs::client::TlsConfig;
 use fs::tikv_fs::TiFs;
 use fuser::MountOption as FuseMountOption;
 use paste::paste;
+use tokio::fs::{metadata, read_to_string};
 use tracing::debug;
 
 const DEFAULT_TLS_CONFIG_PATH: &str = "~/.tifs/tls.toml";
@@ -133,7 +134,7 @@ define_options! { MountOption (FuseMountOption) {
     builtin NoExec,
     builtin DirSync,
     define "direct_io" DirectIO,
-    define BlkSize(u64),
+    define BlkSize(String),
     define MaxSize(String), // size of filesystem
     define Tls(String),
 //    define "opt" OptionName(Display_Debug_Clone_PartialEq_FromStr_able)
@@ -208,20 +209,6 @@ mod tests {
         assert_eq!(
             format!(
                 "{:?}",
-                MountOption::to_vec(vec!["blksize=xx"].iter().copied())
-            ),
-            "[Unknown(\"blksize=xx\")]"
-        );
-        assert_eq!(
-            format!(
-                "{:?}",
-                MountOption::to_vec(vec!["blksize=32=1"].iter().copied())
-            ),
-            "[Unknown(\"blksize=32=1\")]"
-        );
-        assert_eq!(
-            format!(
-                "{:?}",
                 MountOption::to_vec(vec!["blksize=32"].iter().copied())
             ),
             "[BlkSize(32)]"
@@ -265,15 +252,22 @@ mod tests {
             Some(FuseMountOption::DirSync)
         );
         assert_eq!(MountOption::DirectIO.to_builtin(), None);
-        assert_eq!(MountOption::BlkSize(123).to_builtin(), None);
+        assert_eq!(MountOption::BlkSize("1".to_owned()).to_builtin(), None);
+        assert_eq!(MountOption::MaxSize("1".to_owned()).to_builtin(), None);
     }
 
     #[test]
     fn format_mount_options() {
         assert_eq!(String::from(MountOption::NoDev), "nodev");
         assert_eq!(String::from(MountOption::DirectIO), "direct_io");
-        assert_eq!(String::from(MountOption::BlkSize(123)), "blksize=123");
-        assert_eq!(String::from(MountOption::BlkSize(0)), "blksize=0");
+        assert_eq!(
+            String::from(MountOption::BlkSize("123".to_owned())),
+            "blksize=123"
+        );
+        assert_eq!(
+            String::from(MountOption::BlkSize("1MiB".to_owned())),
+            "blksize=1MiB"
+        );
     }
 }
 
@@ -308,7 +302,7 @@ where
         })
         .unwrap_or_else(default_tls_config_path)?;
 
-    let client_cfg = if tls_cfg_path.exists().await {
+    let client_cfg = if metadata(&tls_cfg_path).await.is_ok() {
         let client_cfg_contents = read_to_string(tls_cfg_path).await?;
         toml::from_str::<TlsConfig>(&client_cfg_contents)?.into()
     } else {

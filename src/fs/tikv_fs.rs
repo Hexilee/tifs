@@ -5,7 +5,6 @@ use std::pin::Pin;
 use std::time::{Duration, SystemTime};
 
 use anyhow::anyhow;
-use async_std::task::sleep;
 use async_trait::async_trait;
 use bytes::Bytes;
 use bytestring::ByteString;
@@ -14,6 +13,7 @@ use fuser::*;
 use libc::{F_RDLCK, F_UNLCK, F_WRLCK, SEEK_CUR, SEEK_END, SEEK_SET};
 use parse_size::parse_size;
 use tikv_client::{Config, TransactionClient};
+use tokio::time::sleep;
 use tracing::{debug, error, info, instrument, trace, warn};
 
 use super::async_fs::AsyncFileSystem;
@@ -65,29 +65,32 @@ impl TiFs {
                 .any(|option| matches!(option, MountOption::DirectIO)),
             block_size: options
                 .iter()
-                .find_map(|option| {
-                    if let MountOption::BlkSize(size) = option {
-                        Some(size << 10)
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or(Self::DEFAULT_BLOCK_SIZE),
-            max_size: options.iter().find_map(|option| {
-                if let MountOption::MaxSize(size) = option {
-                    parse_size(size)
+                .find_map(|option| match option {
+                    MountOption::BlkSize(size) => parse_size(size)
                         .map_err(|err| {
-                            error!("fail to parse maxsize({}): {}", size, err);
+                            error!("fail to parse blksize({}): {}", size, err);
                             err
                         })
                         .map(|size| {
-                            debug!("max size: {}", size);
+                            debug!("block size: {}", size);
                             size
                         })
-                        .ok()
-                } else {
-                    None
-                }
+                        .ok(),
+                    _ => None,
+                })
+                .unwrap_or(Self::DEFAULT_BLOCK_SIZE),
+            max_size: options.iter().find_map(|option| match option {
+                MountOption::MaxSize(size) => parse_size(size)
+                    .map_err(|err| {
+                        error!("fail to parse maxsize({}): {}", size, err);
+                        err
+                    })
+                    .map(|size| {
+                        debug!("max size: {}", size);
+                        size
+                    })
+                    .ok(),
+                _ => None,
             }),
         })
     }

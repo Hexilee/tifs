@@ -2,7 +2,7 @@ use clap::{crate_version, App, Arg};
 use tifs::{mount_tifs, MountOption};
 use tracing_subscriber::EnvFilter;
 
-#[async_std::main]
+#[tokio::main]
 async fn main() {
     let matches = App::new("TiFS")
         .version(crate_version!())
