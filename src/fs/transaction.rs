@@ -383,6 +383,7 @@ impl Txn {
     }
 
     pub async fn write_data(&mut self, ino: u64, start: u64, data: Bytes) -> Result<usize> {
+        let write_start = SystemTime::now();
         debug!("write data at ({})[{}]", ino, start);
         let meta = self.read_meta().await?.unwrap();
         self.check_space_left(&meta)?;
@@ -440,6 +441,11 @@ impl Txn {
         inode.set_size(inode.size.max(target), self.block_size);
         self.save_inode(&inode).await?;
         trace!("write data: {}", String::from_utf8_lossy(&data));
+        debug!(
+            "write {} bytes in {}ms",
+            data.len(),
+            write_start.elapsed().unwrap().as_millis()
+        );
         Ok(size)
     }
 

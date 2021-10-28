@@ -102,8 +102,12 @@ impl TiFs {
     {
         match f(self, txn).await {
             Ok(v) => {
+                let commit_start = SystemTime::now();
                 txn.commit().await?;
-                trace!("transaction committed");
+                debug!(
+                    "transaction committed in {} ms",
+                    commit_start.elapsed().unwrap().as_millis()
+                );
                 Ok(v)
             }
             Err(e) => {
