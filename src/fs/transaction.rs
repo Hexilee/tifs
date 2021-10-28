@@ -78,7 +78,7 @@ impl Txn {
         self.save_inode(&inode).await
     }
 
-    pub async fn read_fh(&self, ino: u64, fh: u64) -> Result<FileHandler> {
+    pub async fn read_fh(&mut self, ino: u64, fh: u64) -> Result<FileHandler> {
         let data = self
             .get(ScopedKey::handler(ino, fh))
             .await?
@@ -168,7 +168,6 @@ impl Txn {
             gid,
             rdev,
             blksize: self.block_size as u32,
-            padding: 0,
             flags: 0,
         }
         .into();
@@ -179,7 +178,7 @@ impl Txn {
         Ok(inode.into())
     }
 
-    pub async fn get_index(&self, parent: u64, name: ByteString) -> Result<Option<u64>> {
+    pub async fn get_index(&mut self, parent: u64, name: ByteString) -> Result<Option<u64>> {
         let key = ScopedKey::index(parent, &name);
         self.get(key)
             .await
@@ -202,7 +201,7 @@ impl Txn {
         Ok(self.delete(key).await?)
     }
 
-    pub async fn read_inode(&self, ino: u64) -> Result<Inode> {
+    pub async fn read_inode(&mut self, ino: u64) -> Result<Inode> {
         let value = self
             .get(ScopedKey::inode(ino))
             .await?
@@ -227,7 +226,7 @@ impl Txn {
         Ok(())
     }
 
-    pub async fn read_meta(&self) -> Result<Option<Meta>> {
+    pub async fn read_meta(&mut self) -> Result<Option<Meta>> {
         let opt_data = self.get(ScopedKey::meta()).await?;
         opt_data.map(|data| Meta::deserialize(&data)).transpose()
     }
@@ -386,7 +385,8 @@ impl Txn {
 
     pub async fn write_data(&mut self, ino: u64, start: u64, data: Bytes) -> Result<usize> {
         debug!("write data at ({})[{}]", ino, start);
-        self.check_space_left(&self.read_meta().await?.unwrap())?;
+        let meta = self.read_meta().await?.unwrap();
+        self.check_space_left(&meta)?;
 
         let mut inode = self.read_inode(ino).await?;
         let size = data.len();
@@ -533,7 +533,7 @@ impl Txn {
         }
     }
 
-    pub async fn lookup(&self, parent: u64, name: ByteString) -> Result<u64> {
+    pub async fn lookup(&mut self, parent: u64, name: ByteString) -> Result<u64> {
         self.get_index(parent, name.clone())
             .await?
             .ok_or_else(|| FsError::FileNotFound {

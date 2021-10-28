@@ -52,7 +52,7 @@ impl TiFs {
     where
         S: Clone + Debug + Into<String>,
     {
-        let client = TransactionClient::new_with_config(pd_endpoints.clone(), cfg.clone())
+        let client = TransactionClient::new_with_config(pd_endpoints.clone(), cfg.clone(), None)
             .await
             .map_err(|err| anyhow!("{}", err))?;
         info!("connected to pd endpoints: {:?}", pd_endpoints);
@@ -310,10 +310,10 @@ impl AsyncFileSystem for TiFs {
         atime: Option<TimeOrNow>,
         mtime: Option<TimeOrNow>,
         ctime: Option<SystemTime>,
-        fh: Option<u64>,
+        _fh: Option<u64>,
         crtime: Option<SystemTime>,
-        chgtime: Option<SystemTime>,
-        bkuptime: Option<SystemTime>,
+        _chgtime: Option<SystemTime>,
+        _bkuptime: Option<SystemTime>,
         flags: Option<u32>,
     ) -> Result<Attr> {
         self.spin_no_delay(move |_, txn| {
@@ -372,7 +372,7 @@ impl AsyncFileSystem for TiFs {
         offset -= 2.min(offset);
 
         let directory = self.read_dir(ino).await?;
-        for (item) in directory.into_iter().skip(offset as usize) {
+        for item in directory.into_iter().skip(offset as usize) {
             dir.push(item)
         }
         debug!("read directory {:?}", &dir);
@@ -478,7 +478,7 @@ impl AsyncFileSystem for TiFs {
     }
 
     #[tracing::instrument]
-    async fn access(&self, ino: u64, mask: i32) -> Result<()> {
+    async fn access(&self, _ino: u64, _mask: i32) -> Result<()> {
         Ok(())
     }
 
@@ -621,7 +621,7 @@ impl AsyncFileSystem for TiFs {
     async fn fallocate(
         &self,
         ino: u64,
-        fh: u64,
+        _fh: u64,
         offset: i64,
         length: i64,
         _mode: i32,
@@ -645,10 +645,10 @@ impl AsyncFileSystem for TiFs {
     async fn setlk(
         &self,
         ino: u64,
-        fh: u64,
+        _fh: u64,
         lock_owner: u64,
-        start: u64,
-        end: u64,
+        _start: u64,
+        _end: u64,
         typ: i32,
         pid: u32,
         sleep: bool,
@@ -737,11 +737,11 @@ impl AsyncFileSystem for TiFs {
     async fn getlk(
         &self,
         ino: u64,
-        fh: u64,
-        lock_owner: u64,
-        start: u64,
-        end: u64,
-        typ: i32,
+        _fh: u64,
+        _lock_owner: u64,
+        _start: u64,
+        _end: u64,
+        _typ: i32,
         pid: u32,
     ) -> Result<Lock> {
         // TODO: read only operation need not txn?

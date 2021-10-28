@@ -471,7 +471,7 @@ impl<T: AsyncFileSystem + 'static> Filesystem for AsyncFs<T> {
         block_on(self.0.init(gid, uid, config)).map_err(|err| err.into())
     }
 
-    fn destroy(&mut self, _req: &Request) {
+    fn destroy(&mut self) {
         block_on(self.0.destroy())
     }
 
