@@ -80,6 +80,10 @@ impl<'a> ScopedKey<'a> {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn parse(key: &'a [u8]) -> Result<Self> {
         let invalid_key = || FsError::InvalidScopedKey(key.to_owned());
         let (scope, data) = key.split_first().ok_or_else(invalid_key)?;

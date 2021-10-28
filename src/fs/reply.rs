@@ -68,7 +68,7 @@ pub struct DirItem {
     pub name: String,
     pub typ: FileType,
 }
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Dir {
     offset: usize,
     items: Vec<DirItem>,
@@ -78,12 +78,12 @@ impl Dir {
     pub fn offset(offset: usize) -> Self {
         Self {
             offset,
-            items: Vec::new(),
+            items: Default::default(),
         }
     }
 
     pub fn new() -> Self {
-        Self::offset(0)
+        Default::default()
     }
 
     pub fn push(&mut self, item: DirItem) {
@@ -91,7 +91,7 @@ impl Dir {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct DirPlus {
     offset: usize,
     items: Vec<(DirItem, Entry)>,
@@ -101,12 +101,12 @@ impl DirPlus {
     pub fn offset(offset: usize) -> Self {
         Self {
             offset,
-            items: Vec::new(),
+            items: Default::default(),
         }
     }
 
     pub fn new() -> Self {
-        Self::offset(0)
+        Default::default()
     }
 
     pub fn push(&mut self, item: DirItem, entry: Entry) {
@@ -127,6 +127,7 @@ pub struct StatFs {
 }
 
 impl StatFs {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         blocks: u64,
         bfree: u64,

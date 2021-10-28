@@ -33,6 +33,7 @@ where
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 #[async_trait]
 pub trait AsyncFileSystem: Send + Sync {
     /// Initialize filesystem.

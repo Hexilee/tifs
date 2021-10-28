@@ -94,8 +94,8 @@ impl Console {
 
         let mut buffer = String::new();
         BufReader::new(stdin()).read_line(&mut buffer)?;
-        let commands: Vec<&str> = buffer.split(" ").map(|seg| seg.trim()).collect();
-        if commands.len() == 0 {
+        let commands: Vec<&str> = buffer.split(' ').map(|seg| seg.trim()).collect();
+        if commands.is_empty() {
             return Ok(false);
         }
 
@@ -165,7 +165,7 @@ impl Console {
     }
 
     async fn get_attr(&self, txn: &mut Txn, args: &[&str]) -> Result<()> {
-        if args.len() < 1 {
+        if args.is_empty() {
             return Err(anyhow!("invalid arguments `{:?}`", args));
         }
         match txn.get(ScopedKey::inode(args[0].parse()?)).await? {
@@ -176,7 +176,7 @@ impl Console {
     }
 
     async fn get_attr_raw(&self, txn: &mut Txn, args: &[&str]) -> Result<()> {
-        if args.len() < 1 {
+        if args.is_empty() {
             return Err(anyhow!("invalid arguments `{:?}`", args));
         }
         match txn.get(ScopedKey::inode(args[0].parse()?)).await? {
@@ -187,7 +187,7 @@ impl Console {
     }
 
     async fn get_inline(&self, txn: &mut Txn, args: &[&str]) -> Result<()> {
-        if args.len() < 1 {
+        if args.is_empty() {
             return Err(anyhow!("invalid arguments `{:?}`", args));
         }
         match txn.get(ScopedKey::inode(args[0].parse()?)).await? {

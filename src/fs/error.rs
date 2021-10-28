@@ -106,11 +106,10 @@ impl From<tikv_client::Error> for FsError {
     }
 }
 
-impl Into<libc::c_int> for FsError {
-    fn into(self) -> libc::c_int {
+impl From<FsError> for libc::c_int {
+    fn from(e: FsError) -> Self {
         use FsError::*;
-
-        match self {
+        match e {
             Unimplemented => libc::ENOSYS,
             NameTooLong { file: _ } => libc::ENAMETOOLONG,
             FileNotFound { file: _ } => libc::ENOENT,

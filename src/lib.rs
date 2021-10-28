@@ -34,12 +34,12 @@ macro_rules! define_options {
         }
         impl $name {
             pub fn to_vec<'a, I: Iterator<Item=&'a str>>(iter: I) -> Vec<Self> {
-                iter.map(|v| v.split(',').map(|v| Self::from(v))).flatten().collect()
+                iter.map(|v| v.split(',').map(Self::from)).flatten().collect()
             }
-            pub fn to_builtin<'a, I: Iterator<Item=&'a Self>>(iter: I) -> Vec<$type> {
-                iter.filter_map(|v| v.into_builtin()).collect()
+            pub fn collect_builtin<'a, I: Iterator<Item=&'a Self>>(iter: I) -> Vec<$type> {
+                iter.filter_map(|v| v.to_builtin()).collect()
             }
-            pub fn into_builtin(&self) -> Option<$type> {
+            pub fn to_builtin(&self) -> Option<$type> {
                 match self {
                     $(Self::$opt => Some($type::$opt),)*
                     _ => None,
@@ -147,130 +147,108 @@ mod tests {
         assert_eq!(
             format!(
                 "{:?}",
-                MountOption::to_vec(vec!["direct_io", "nodev,exec"].iter().map(|v| v.clone()))
+                MountOption::to_vec(vec!["direct_io", "nodev,exec"].iter().copied())
             ),
             "[DirectIO, NoDev, Exec]"
         );
         assert_eq!(
             format!(
                 "{:?}",
-                MountOption::to_vec(vec!["direct_io="].iter().map(|v| v.clone()))
+                MountOption::to_vec(vec!["direct_io="].iter().copied())
             ),
             "[Unknown(\"direct_io=\")]"
         );
         assert_eq!(
             format!(
                 "{:?}",
-                MountOption::to_vec(vec!["direct_io=1"].iter().map(|v| v.clone()))
+                MountOption::to_vec(vec!["direct_io=1"].iter().copied())
             ),
             "[Unknown(\"direct_io=1\")]"
         );
         assert_eq!(
             format!(
                 "{:?}",
-                MountOption::to_vec(vec!["direct_io=1=2"].iter().map(|v| v.clone()))
+                MountOption::to_vec(vec!["direct_io=1=2"].iter().copied())
             ),
             "[Unknown(\"direct_io=1=2\")]"
         );
         assert_eq!(
             format!(
                 "{:?}",
-                MountOption::to_vec(vec!["undefined"].iter().map(|v| v.clone()))
+                MountOption::to_vec(vec!["undefined"].iter().copied())
             ),
             "[Unknown(\"undefined\")]"
         );
         assert_eq!(
             format!(
                 "{:?}",
-                MountOption::to_vec(vec!["undefined=foo"].iter().map(|v| v.clone()))
+                MountOption::to_vec(vec!["undefined=foo"].iter().copied())
             ),
             "[Unknown(\"undefined=foo\")]"
         );
         assert_eq!(
-            format!(
-                "{:?}",
-                MountOption::to_vec(vec!["dev="].iter().map(|v| v.clone()))
-            ),
+            format!("{:?}", MountOption::to_vec(vec!["dev="].iter().copied())),
             "[Unknown(\"dev=\")]"
         );
         assert_eq!(
-            format!(
-                "{:?}",
-                MountOption::to_vec(vec!["dev=1"].iter().map(|v| v.clone()))
-            ),
+            format!("{:?}", MountOption::to_vec(vec!["dev=1"].iter().copied())),
             "[Unknown(\"dev=1\")]"
         );
         assert_eq!(
-            format!(
-                "{:?}",
-                MountOption::to_vec(vec!["blksize"].iter().map(|v| v.clone()))
-            ),
+            format!("{:?}", MountOption::to_vec(vec!["blksize"].iter().copied())),
             "[Unknown(\"blksize\")]"
         );
         assert_eq!(
             format!(
                 "{:?}",
-                MountOption::to_vec(vec!["blksize="].iter().map(|v| v.clone()))
+                MountOption::to_vec(vec!["blksize="].iter().copied())
             ),
             "[Unknown(\"blksize=\")]"
         );
         assert_eq!(
             format!(
                 "{:?}",
-                MountOption::to_vec(vec!["blksize=xx"].iter().map(|v| v.clone()))
+                MountOption::to_vec(vec!["blksize=xx"].iter().copied())
             ),
             "[Unknown(\"blksize=xx\")]"
         );
         assert_eq!(
             format!(
                 "{:?}",
-                MountOption::to_vec(vec!["blksize=32=1"].iter().map(|v| v.clone()))
+                MountOption::to_vec(vec!["blksize=32=1"].iter().copied())
             ),
             "[Unknown(\"blksize=32=1\")]"
         );
         assert_eq!(
             format!(
                 "{:?}",
-                MountOption::to_vec(vec!["blksize=32"].iter().map(|v| v.clone()))
+                MountOption::to_vec(vec!["blksize=32"].iter().copied())
             ),
             "[BlkSize(32)]"
         );
         assert_eq!(
-            format!(
-                "{:?}",
-                MountOption::to_vec(vec!["tls"].iter().map(|v| v.clone()))
-            ),
+            format!("{:?}", MountOption::to_vec(vec!["tls"].iter().copied())),
             "[Unknown(\"tls\")]"
         );
         assert_eq!(
-            format!(
-                "{:?}",
-                MountOption::to_vec(vec!["tls="].iter().map(|v| v.clone()))
-            ),
+            format!("{:?}", MountOption::to_vec(vec!["tls="].iter().copied())),
             "[Tls(\"\")]"
         );
         assert_eq!(
-            format!(
-                "{:?}",
-                MountOption::to_vec(vec!["tls=xx"].iter().map(|v| v.clone()))
-            ),
+            format!("{:?}", MountOption::to_vec(vec!["tls=xx"].iter().copied())),
             "[Tls(\"xx\")]"
         );
         assert_eq!(
             format!(
                 "{:?}",
-                MountOption::to_vec(vec!["tls=/root"].iter().map(|v| v.clone()))
+                MountOption::to_vec(vec!["tls=/root"].iter().copied())
             ),
             "[Tls(\"/root\")]"
         );
         assert_eq!(
             format!(
                 "{:?}",
-                MountOption::to_vec(
-                    vec!["direct_io", "nodev,blksize=32"]
-                        .iter()
-                        .map(|v| v.clone())
-                )
+                MountOption::to_vec(vec!["direct_io", "nodev,blksize=32"].iter().copied())
             ),
             "[DirectIO, NoDev, BlkSize(32)]"
         );
@@ -279,15 +257,15 @@ mod tests {
     #[test]
     fn convert_mount_options() {
         assert_eq!(
-            MountOption::NoDev.into_builtin(),
+            MountOption::NoDev.to_builtin(),
             Some(FuseMountOption::NoDev)
         );
         assert_eq!(
-            MountOption::DirSync.into_builtin(),
+            MountOption::DirSync.to_builtin(),
             Some(FuseMountOption::DirSync)
         );
-        assert_eq!(MountOption::DirectIO.into_builtin(), None);
-        assert_eq!(MountOption::BlkSize(123).into_builtin(), None);
+        assert_eq!(MountOption::DirectIO.to_builtin(), None);
+        assert_eq!(MountOption::BlkSize(123).to_builtin(), None);
     }
 
     #[test]
@@ -317,7 +295,7 @@ where
     #[cfg(target_os = "linux")]
     fuse_options.push(FuseMountOption::AutoUnmount);
 
-    fuse_options.extend(MountOption::to_builtin(options.iter()));
+    fuse_options.extend(MountOption::collect_builtin(options.iter()));
 
     let tls_cfg_path = options
         .iter()

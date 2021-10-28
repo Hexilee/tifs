@@ -82,7 +82,7 @@ impl Txn {
         let data = self
             .get(ScopedKey::handler(ino, fh))
             .await?
-            .ok_or_else(|| FsError::FhNotFound { ino, fh })?;
+            .ok_or(FsError::FhNotFound { ino, fh })?;
         FileHandler::deserialize(&data)
     }
 
@@ -175,7 +175,7 @@ impl Txn {
         debug!("made inode ({:?})", &inode);
 
         self.save_inode(&inode).await?;
-        Ok(inode.into())
+        Ok(inode)
     }
 
     pub async fn get_index(&mut self, parent: u64, name: ByteString) -> Result<Option<u64>> {
@@ -205,7 +205,7 @@ impl Txn {
         let value = self
             .get(ScopedKey::inode(ino))
             .await?
-            .ok_or_else(|| FsError::InodeNotFound { inode: ino })?;
+            .ok_or(FsError::InodeNotFound { inode: ino })?;
         Ok(Inode::deserialize(&value)?)
     }
 
@@ -288,8 +288,7 @@ impl Txn {
 
         let inlined = inode.inline_data.as_ref().unwrap();
         debug_assert!(inode.size as usize == inlined.len());
-        let mut data: Vec<u8> = Vec::with_capacity(size);
-        data.resize(size, 0);
+        let mut data = vec![0; size];
         if inlined.len() > start {
             let to_copy = size.min(inlined.len() - start);
             data[..to_copy].copy_from_slice(&inlined[start..start + to_copy]);
@@ -417,7 +416,7 @@ impl Txn {
 
         self.put(start_key, start_value).await?;
 
-        while rest.len() != 0 {
+        while !rest.is_empty() {
             block_index += 1;
             let key = ScopedKey::block(ino, block_index);
             let (curent_block, current_rest) =
@@ -439,7 +438,7 @@ impl Txn {
         inode.mtime = SystemTime::now();
         inode.ctime = SystemTime::now();
         inode.set_size(inode.size.max(target), self.block_size);
-        self.save_inode(&inode.into()).await?;
+        self.save_inode(&inode).await?;
         trace!("write data: {}", String::from_utf8_lossy(&data));
         Ok(size)
     }
@@ -494,7 +493,7 @@ impl Txn {
                 let parent_dir = self.read_dir(parent).await?;
                 let new_parent_dir: Directory = parent_dir
                     .into_iter()
-                    .filter(|item| item.name != &*name)
+                    .filter(|item| item.name != *name)
                     .collect();
                 self.save_dir(parent, &new_parent_dir).await?;
 
@@ -514,7 +513,7 @@ impl Txn {
             }),
             Some(ino) => {
                 let target_dir = self.read_dir(ino).await?;
-                if target_dir.len() != 0 {
+                if !target_dir.is_empty() {
                     let name_str = name.to_string();
                     debug!("dir({}) not empty", &name_str);
                     return Err(FsError::DirNotEmpty { dir: name_str });
@@ -525,7 +524,7 @@ impl Txn {
                 let parent_dir = self.read_dir(parent).await?;
                 let new_parent_dir: Directory = parent_dir
                     .into_iter()
-                    .filter(|item| item.name != &*name)
+                    .filter(|item| item.name != *name)
                     .collect();
                 self.save_dir(parent, &new_parent_dir).await?;
                 Ok(())
@@ -580,18 +579,18 @@ impl Txn {
     }
 
     pub async fn read_dir(&mut self, ino: u64) -> Result<Directory> {
-        let data =
-            self.get(ScopedKey::block(ino, 0))
-                .await?
-                .ok_or_else(|| FsError::BlockNotFound {
-                    inode: ino,
-                    block: 0,
-                })?;
+        let data = self
+            .get(ScopedKey::block(ino, 0))
+            .await?
+            .ok_or(FsError::BlockNotFound {
+                inode: ino,
+                block: 0,
+            })?;
         trace!("read data: {}", String::from_utf8_lossy(&data));
         super::dir::decode(&data)
     }
 
-    pub async fn save_dir(&mut self, ino: u64, dir: &Directory) -> Result<Inode> {
+    pub async fn save_dir(&mut self, ino: u64, dir: &[DirItem]) -> Result<Inode> {
         let data = super::dir::encode(dir)?;
         let mut inode = self.read_inode(ino).await?;
         inode.set_size(data.len() as u64, self.block_size);

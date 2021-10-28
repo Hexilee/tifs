@@ -72,7 +72,7 @@ async fn main() {
     let endpoints: Vec<&str> = device
         .strip_prefix("tifs:")
         .unwrap_or(device)
-        .split(",")
+        .split(',')
         .collect();
 
     let mountpoint: String =
@@ -106,7 +106,7 @@ async fn main() {
             format!("tifs:{}", endpoints.join(",")),
             mountpoint,
         ];
-        if options.len() > 0 {
+        if !options.is_empty() {
             args.push("-o".to_owned());
             args.push(
                 options

@@ -4,7 +4,7 @@ use super::serialize::{deserialize, serialize, ENCODING};
 
 pub type Directory = Vec<DirItem>;
 
-pub fn encode(dir: &Directory) -> Result<Vec<u8>> {
+pub fn encode(dir: &[DirItem]) -> Result<Vec<u8>> {
     serialize(dir).map_err(|err| FsError::Serialize {
         target: "directory",
         typ: ENCODING,
