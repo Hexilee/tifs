@@ -1,10 +1,11 @@
 use clap::{crate_version, App, Arg};
 use tifs::{mount_tifs_daemonize, MountOption};
 use tracing::{debug, info, trace};
+use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     let matches = App::new("mount.tifs")
         .version(crate_version!())
         .author("Hexi Lee")
@@ -50,20 +51,20 @@ async fn main() {
         )
         .get_matches();
 
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .try_init()
-        .unwrap();
+    let tracer = opentelemetry_jaeger::new_pipeline()
+        .with_service_name("tifs-report")
+        .install_simple()?;
+
+    tracing_subscriber::registry()
+        .with(tracing_opentelemetry::layer().with_tracer(tracer))
+        .with(EnvFilter::from_default_env())
+        .try_init()?;
 
     let serve = matches.is_present("serve");
     let foreground = serve || matches.is_present("foreground");
-    let logfile = matches.value_of("logfile").map(|v| {
-        std::fs::canonicalize(v)
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_owned()
-    });
+    let logfile = matches
+        .value_of("logfile")
+        .and_then(|v| Some(std::fs::canonicalize(v).ok()?.to_str()?.to_owned()));
 
     trace!("serve={} foreground={}", serve, foreground);
 
@@ -75,12 +76,13 @@ async fn main() {
         .split(',')
         .collect();
 
-    let mountpoint: String =
-        std::fs::canonicalize(matches.value_of("mount-point").unwrap().to_string())
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_owned();
+    let mountpoint = std::fs::canonicalize(
+        &matches
+            .value_of("mount-point")
+            .ok_or_else(|| anyhow::anyhow!("mount-point is required"))?,
+    )?
+    .to_string_lossy()
+    .to_string();
 
     let options = MountOption::to_vec(matches.values_of("options").unwrap_or_default());
 
@@ -93,18 +95,14 @@ async fn main() {
         use std::io::{Read, Write};
         use std::process::{Command, Stdio};
 
-        let exe = std::env::current_exe()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_owned();
+        let exe = std::env::current_exe()?.to_string_lossy().to_string();
         debug!("Launching server, current_exe={}", exe);
         info!("{}", runtime_config_string);
 
         let mut args = vec![
             "--serve".to_owned(),
             format!("tifs:{}", endpoints.join(",")),
-            mountpoint,
+            mountpoint.to_string(),
         ];
         if !options.is_empty() {
             args.push("-o".to_owned());
@@ -120,14 +118,13 @@ async fn main() {
             args.push("--log-file".to_owned());
             args.push(f);
         }
-        let child = Command::new(exe)
+        let child = Command::new(&exe)
             .args(args)
             .current_dir("/")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .spawn()
-            .unwrap();
+            .spawn()?;
 
         if let Some(mut stdout) = child.stdout {
             let mut my_stdout = std::io::stdout();
@@ -136,7 +133,7 @@ async fn main() {
                 if size == 0 {
                     break; // EOF
                 }
-                my_stdout.write_all(&buffer[0..size]).unwrap();
+                my_stdout.write_all(&buffer[0..size])?;
             }
         }
         if let Some(mut stderr) = child.stderr {
@@ -146,13 +143,13 @@ async fn main() {
                 if size == 0 {
                     break; // EOF
                 }
-                my_stderr.write_all(&buffer[0..size]).unwrap();
+                my_stderr.write_all(&buffer[0..size])?;
             }
         }
-        return;
+        return Ok(());
     }
 
-    mount_tifs_daemonize(mountpoint, endpoints, options, move || {
+    mount_tifs_daemonize(mountpoint.to_string(), endpoints, options, move || {
         if serve {
             use std::ffi::CString;
             use std::io::{Error, Write};
@@ -205,5 +202,4 @@ async fn main() {
         Ok(())
     })
     .await
-    .unwrap();
 }
