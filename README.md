@@ -58,10 +58,10 @@ sudo ./install.sh
 > The `install.sh` may fail in macOS Catalina or Big Sur because of the 
 > [SIP](https://developer.apple.com/documentation/security/disabling_and_enabling_system_integrity_protection). 
 > 
-> You can just use the `target/release/mount` to mount tifs.
+> You can just use the `target/release/tifs` to mount tifs.
 > ### Example
 > ```
-> target/release/mount tifs:127.0.0.1:2379 ~/mnt
+> target/release/tifs tifs:127.0.0.1:2379 ~/mnt
 > ```
 
 ### Source code

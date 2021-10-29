@@ -1,8 +1,8 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    install ./target/release/mount /sbin/mount.tifs
+    install ./target/release/tifs /sbin/mount.tifs
 elif [[ "$OSTYPE" == "darwin"* ]]; then
-    install ./target/release/mount /sbin/mount_tifs
+    install ./target/release/tifs /sbin/mount_tifs
 else
     echo "unsupported OS type: $OSTYPE"
     exit 1

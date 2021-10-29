@@ -24,11 +24,18 @@ async fn main() -> anyhow::Result<()> {
                 .index(2)
         )
         .arg(
-            Arg::with_name("tracing-endpoint")
-                .value_name("TRACING_ENDPOINT")
-                .long("tracing")
-                .short("t")
-                .help("the jaeger endpoint")
+            Arg::with_name("jaeger-collector")
+                .value_name("JAEGER_COLLECTOR")
+                .long("jaeger-collector")
+                .short("jc")
+                .help("the jaeger collector endpoint")
+        )
+        .arg(
+            Arg::with_name("jaeger-agent")
+                .value_name("JAEGER_AGENT")
+                .long("jaeger-agent")
+                .short("ja")
+                .help("the jaeger agent endpoint")
         )
         .arg(
             Arg::with_name("options")
@@ -59,10 +66,12 @@ async fn main() -> anyhow::Result<()> {
         .get_matches();
 
     let mut tracer_builder = opentelemetry_jaeger::new_pipeline().with_service_name("tifs-report");
-    if let Some(e) = matches.value_of("tracing-endpoint") {
+    if let Some(e) = matches.value_of("jaeger-agent") {
+        tracer_builder = tracer_builder.with_agent_endpoint(e)
+    };
+    if let Some(e) = matches.value_of("jaeger-collector") {
         tracer_builder = tracer_builder.with_collector_endpoint(e)
     };
-
     let tracer = tracer_builder.install_simple()?;
 
     tracing_subscriber::registry()

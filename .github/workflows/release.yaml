@@ -36,7 +36,7 @@ jobs:
       - name: Build
         run: |
           make release
-          tar -czvf ./tifs-linux-amd64.tar.gz install.sh ./target/release/tifs ./target/release/mount
+          tar -czvf ./tifs-linux-amd64.tar.gz install.sh ./target/release/tifs
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
@@ -58,7 +58,7 @@ jobs:
       - name: Build
         run: |
           make release
-          tar -czvf ./tifs-darwin-amd64.tar.gz install.sh ./target/release/tifs ./target/release/mount
+          tar -czvf ./tifs-darwin-amd64.tar.gz install.sh ./target/release/tifs
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
