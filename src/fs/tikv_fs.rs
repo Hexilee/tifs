@@ -95,6 +95,7 @@ impl TiFs {
         })
     }
 
+    #[instrument(skip(txn, f))]
     async fn process_txn<F, T>(&self, txn: &mut Txn, f: F) -> Result<T>
     where
         T: 'static + Send,
