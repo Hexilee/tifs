@@ -5,7 +5,7 @@ use bytes::Bytes;
 use bytestring::ByteString;
 use fuser::{FileAttr, FileType};
 use tikv_client::{Transaction, TransactionClient};
-use tracing::{debug, trace, instrument};
+use tracing::{debug, instrument, trace};
 
 use super::block::empty_block;
 use super::dir::Directory;
@@ -382,7 +382,7 @@ impl Txn {
         Ok(clear_size)
     }
 
-    #[instrument(skip(data))]
+    #[instrument(skip(self, data))]
     pub async fn write_data(&mut self, ino: u64, start: u64, data: Bytes) -> Result<usize> {
         let write_start = SystemTime::now();
         debug!("write data at ({})[{}]", ino, start);

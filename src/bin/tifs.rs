@@ -27,14 +27,14 @@ async fn main() -> anyhow::Result<()> {
             Arg::with_name("jaeger-collector")
                 .value_name("JAEGER_COLLECTOR")
                 .long("jaeger-collector")
-                .short("jc")
+                .short("c")
                 .help("the jaeger collector endpoint")
         )
         .arg(
             Arg::with_name("jaeger-agent")
                 .value_name("JAEGER_AGENT")
                 .long("jaeger-agent")
-                .short("ja")
+                .short("a")
                 .help("the jaeger agent endpoint")
         )
         .arg(
