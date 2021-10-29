@@ -1,7 +1,7 @@
 build: 
 	cargo build
 release:
-	cargo build --features "binc" --release
+	cargo build --release
 install: release
 	sh ./install.sh
 fmt:
