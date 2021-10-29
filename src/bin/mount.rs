@@ -20,8 +20,15 @@ async fn main() -> anyhow::Result<()> {
             Arg::with_name("mount-point")
                 .value_name("MOUNT_POINT")
                 .required(true)
-                .help("Act as a client, and mount FUSE at given path")
+                .help("act as a client, and mount FUSE at given path")
                 .index(2)
+        )
+        .arg(
+            Arg::with_name("tracing-endpoint")
+                .value_name("TRACING_ENDPOINT")
+                .long("tracing")
+                .short("t")
+                .help("the jaeger endpoint")
         )
         .arg(
             Arg::with_name("options")
@@ -51,9 +58,12 @@ async fn main() -> anyhow::Result<()> {
         )
         .get_matches();
 
-    let tracer = opentelemetry_jaeger::new_pipeline()
-        .with_service_name("tifs-report")
-        .install_simple()?;
+    let mut tracer_builder = opentelemetry_jaeger::new_pipeline().with_service_name("tifs-report");
+    if let Some(e) = matches.value_of("tracing-endpoint") {
+        tracer_builder = tracer_builder.with_collector_endpoint(e)
+    };
+
+    let tracer = tracer_builder.install_simple()?;
 
     tracing_subscriber::registry()
         .with(tracing_opentelemetry::layer().with_tracer(tracer))
