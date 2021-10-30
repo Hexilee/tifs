@@ -24,18 +24,25 @@ async fn main() -> anyhow::Result<()> {
                 .index(2)
         )
         .arg(
+            Arg::with_name("tracer")
+                .value_name("TRACER")
+                .long("tracer")
+                .short("t")
+                .help("the tracer <logger | jaeger>, logger by default")
+        )
+        .arg(
             Arg::with_name("jaeger-collector")
                 .value_name("JAEGER_COLLECTOR")
                 .long("jaeger-collector")
                 .short("c")
-                .help("the jaeger collector endpoint")
+                .help("the jaeger collector endpoint (e.g. tifs:127.0.0.1:14268)")
         )
         .arg(
             Arg::with_name("jaeger-agent")
                 .value_name("JAEGER_AGENT")
                 .long("jaeger-agent")
                 .short("a")
-                .help("the jaeger agent endpoint")
+                .help("the jaeger agent endpoint (e.g. tifs:127.0.0.1:6831)")
         )
         .arg(
             Arg::with_name("options")
@@ -65,19 +72,38 @@ async fn main() -> anyhow::Result<()> {
         )
         .get_matches();
 
-    let mut tracer_builder = opentelemetry_jaeger::new_pipeline().with_service_name("tifs-report");
-    if let Some(e) = matches.value_of("jaeger-agent") {
-        tracer_builder = tracer_builder.with_agent_endpoint(e)
-    };
-    if let Some(e) = matches.value_of("jaeger-collector") {
-        tracer_builder = tracer_builder.with_collector_endpoint(e)
-    };
-    let tracer = tracer_builder.install_simple()?;
-
-    tracing_subscriber::registry()
-        .with(tracing_opentelemetry::layer().with_tracer(tracer))
-        .with(EnvFilter::from_default_env())
-        .try_init()?;
+    match matches.value_of("tracer").unwrap_or_else(|| {
+        if matches.value_of("jaeger-agent").is_some()
+            || matches.value_of("jaeger-collector").is_some()
+        {
+            "jaeger"
+        } else {
+            "logger"
+        }
+    }) {
+        "logger" => {
+            tracing_subscriber::fmt()
+                .with_env_filter(EnvFilter::from_default_env())
+                .try_init()
+                .map_err(|err| anyhow::anyhow!("fail to init tracing subscriber: {}", err))?;
+        }
+        "jaeger" => {
+            let mut tracer_builder =
+                opentelemetry_jaeger::new_pipeline().with_service_name("tifs-report");
+            if let Some(e) = matches.value_of("jaeger-agent") {
+                tracer_builder = tracer_builder.with_agent_endpoint(e)
+            };
+            if let Some(e) = matches.value_of("jaeger-collector") {
+                tracer_builder = tracer_builder.with_collector_endpoint(e)
+            };
+            let tracer = tracer_builder.install_simple()?;
+            tracing_subscriber::registry()
+                .with(EnvFilter::from_default_env())
+                .with(tracing_opentelemetry::layer().with_tracer(tracer))
+                .try_init()?;
+        }
+        t => return Err(anyhow::anyhow!("unsupported tracer: {}", t)),
+    }
 
     let serve = matches.is_present("serve");
     let foreground = serve || matches.is_present("foreground");
