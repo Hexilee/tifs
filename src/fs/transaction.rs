@@ -4,7 +4,7 @@ use std::time::SystemTime;
 use bytes::Bytes;
 use bytestring::ByteString;
 use fuser::{FileAttr, FileType};
-use tikv_client::{Transaction, TransactionClient};
+use tikv_client::{Transaction, TransactionClient, TransactionOptions};
 use tracing::{debug, instrument, trace};
 
 use super::block::empty_block;
@@ -52,7 +52,9 @@ impl Txn {
         max_name_len: u32,
     ) -> Result<Self> {
         Ok(Txn {
-            txn: client.begin_optimistic().await?,
+            txn: client
+                .begin_with_options(TransactionOptions::new_optimistic().use_async_commit())
+                .await?,
             block_size,
             max_blocks: max_size.map(|size| size / block_size),
             max_name_len,
