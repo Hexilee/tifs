@@ -19,7 +19,7 @@ COPY src/lib.rs src/lib.rs
 COPY Cargo.* ./
 RUN cargo fetch
 COPY . .
-RUN cargo build --all --release
+RUN cargo build --all --release 
 
 FROM ubuntu:22.04
 RUN apt-get update
