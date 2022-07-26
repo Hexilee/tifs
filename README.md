@@ -96,7 +96,7 @@ docker run -d --device /dev/fuse \
     --cap-add SYS_ADMIN \
     -v <cert dir>:/root/.tifs/tls \
     -v <mount point>:/mnt:shared \
-    hexilee/tifs:0.2.2 --mount-point /mnt --pd-endpoints <endpoints>
+    hexilee/tifs:0.3.1 --mount-point /mnt --pd-endpoints <endpoints>
 ```
 
 ### Binary

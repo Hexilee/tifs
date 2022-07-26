@@ -1,4 +1,4 @@
-FROM ubuntu:20.04 as builder
+FROM ubuntu:22.04 as builder
 RUN ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime
 
 RUN apt-get update && \
@@ -19,11 +19,10 @@ COPY src/lib.rs src/lib.rs
 COPY Cargo.* ./
 RUN cargo fetch
 COPY . .
-RUN cargo build --features "binc" --no-default-features --all --release
+RUN cargo build -all --release
 
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 RUN apt-get update
 RUN apt-get install -y libfuse3-dev fuse3 libssl-dev
 COPY --from=builder /src/target/release/tifs /tifs
-COPY --from=builder /src/config-examples/tls.toml /tls.toml
-ENTRYPOINT ["/tifs", "-o", "tls=/tls.toml"]
+ENTRYPOINT ["/tifs"]
