@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:experimental
+
 FROM ubuntu:22.04 as builder
 RUN ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime
 
@@ -13,13 +15,11 @@ RUN apt-get update && \
 RUN curl https://sh.rustup.rs -sSf | \
     sh -s -- --default-toolchain nightly-2021-06-01 -y
 ENV PATH=/root/.cargo/bin:$PATH
-
-WORKDIR /src
-COPY src/lib.rs src/lib.rs
-COPY Cargo.* ./
-RUN cargo fetch
-COPY . .
-RUN cargo build --all --release 
+COPY . /tifs-build
+WORKDIR /tifs-build
+RUN --mount=type=cache,target=/tifs-build/target \
+    --mount=type=cache,target=/root/.cargo/registry \
+    cargo build --release --all
 
 FROM ubuntu:22.04
 RUN apt-get update

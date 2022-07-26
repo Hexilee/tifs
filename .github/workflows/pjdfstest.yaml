@@ -13,8 +13,9 @@ jobs:
         with:
           push: false
           tags: ci
-      # - name: Up TiKV
+      - name: Up TiKV
       #   run: docker-compose up -d
+        run: mkdir ~/mnt/tifs
       - name: Build pjdfstest
         run: |
           git clone https://github.com/pjd/pjdfstest.git
@@ -25,7 +26,7 @@ jobs:
       - name: Test
         run: |
           cd ~/mnt/tifs
-          stat ~/mnt/tifs/.
+          stat .
           sudo prove -rv $GITHUB_WORKSPACE/pjdfstest/tests
 
 
