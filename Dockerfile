@@ -8,7 +8,7 @@ RUN apt-get update && \
     ca-certificates curl file libssl-dev \
     build-essential \
     autoconf automake autotools-dev libtool xutils-dev \
-    libfuse3-dev pkgconf cmake && \
+    libfuse3-dev fuse3 pkgconf cmake && \
     rm -rf /var/lib/apt/lists/*
 
 # install toolchain
@@ -20,9 +20,6 @@ WORKDIR /tifs-build
 RUN --mount=type=cache,target=/tifs-build/target \
     --mount=type=cache,target=/root/.cargo/registry \
     cargo build --release --all
-
-FROM ubuntu:22.04
-RUN apt-get update
-RUN apt-get install -y libfuse3-dev fuse3 libssl-dev
-COPY --from=builder /src/target/release/tifs /tifs
+RUN --mount=type=cache,target=/tifs-build/target \
+    cp /tifs-build/target/release/tifs /tifs-build/target/tifs
 ENTRYPOINT ["/tifs"]
