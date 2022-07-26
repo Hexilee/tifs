@@ -12,7 +12,7 @@ jobs:
         uses: docker/build-push-action@v1
         with:
           push: false
-          tags: hexilee/tifs:ci
+          tags: ci
       - name: Up TiKV
         run: docker-compose up -d pd tikv
       - name: Mount
