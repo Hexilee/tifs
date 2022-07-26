@@ -14,11 +14,9 @@ jobs:
           push: false
           tags: ci
       - name: Up TiKV
-        run: docker-compose up -d pd tikv
-      - name: Mount
-        run: docker-compose up -d tifs
+        run: docker-compose up -d
       - name: Stat
-        run: df -h
+        run: stat ~/mnt/tifs/.
       - name: Build pjdfstest
         run: |
           git clone https://github.com/pjd/pjdfstest.git
@@ -26,8 +24,6 @@ jobs:
           autoreconf -ifs
           ./configure
           make pjdfstest
-      - name: Check out the repo
-        uses: actions/checkout@v2
       - name: Test
         run: |
           cd ~/mnt/tifs
