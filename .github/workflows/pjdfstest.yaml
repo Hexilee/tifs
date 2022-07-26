@@ -17,7 +17,7 @@ jobs:
           tags: ci
       - name: Up TiKV
       #   run: docker-compose up -d
-        run: mkdir ~/mnt/tifs
+        run: mkdir -p ~/mnt/tifs
       - name: Build pjdfstest
         run: |
           git clone https://github.com/pjd/pjdfstest.git
