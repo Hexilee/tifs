@@ -15,8 +15,6 @@ jobs:
         with:
           push: false
           tags: ci
-      - name: Up TiFS
-        run: docker-compose up -d
       - name: Build pjdfstest
         run: |
           git clone https://github.com/pjd/pjdfstest.git
@@ -26,6 +24,7 @@ jobs:
           make pjdfstest
       - name: Test
         run: |
+          docker-compose up -d
           cd ~/mnt/tifs
           until stat . | grep 65536
           do
