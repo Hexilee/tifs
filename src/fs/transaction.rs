@@ -529,22 +529,20 @@ impl Txn {
                 file: name.to_string(),
             }),
             Some(ino) => {
-                let target_dir = self.read_dir(ino).await?;
-                if !target_dir.is_empty() {
+                if self
+                    .read_dir(ino)
+                    .await?
+                    .iter()
+                    .any(|i| i.name != "." && i.name != "..")
+                {
                     let name_str = name.to_string();
                     debug!("dir({}) not empty", &name_str);
                     return Err(FsError::DirNotEmpty { dir: name_str });
                 }
-                self.remove_index(parent, name.clone()).await?;
-                self.remove_inode(ino).await?;
 
-                let parent_dir = self.read_dir(parent).await?;
-                let new_parent_dir: Directory = parent_dir
-                    .into_iter()
-                    .filter(|item| item.name != *name)
-                    .collect();
-                self.save_dir(parent, &new_parent_dir).await?;
-                Ok(())
+                self.unlink(ino, ByteString::from_static(".")).await?;
+                self.unlink(ino, ByteString::from_static("..")).await?;
+                self.unlink(parent, name).await
             }
         }
     }
@@ -592,7 +590,11 @@ impl Txn {
         let mut inode = self.make_inode(parent, name, dir_mode, gid, uid, 0).await?;
         inode.perm = mode as _;
         self.save_inode(&inode).await?;
-        self.save_dir(inode.ino, &Directory::new()).await
+        self.save_dir(inode.ino, &Directory::new()).await?;
+        self.link(inode.ino, inode.ino, ByteString::from("."))
+            .await?;
+        self.link(parent, inode.ino, ByteString::from("..")).await?;
+        self.read_inode(inode.ino).await
     }
 
     pub async fn read_dir(&mut self, ino: u64) -> Result<Directory> {

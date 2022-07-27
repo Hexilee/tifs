@@ -22,7 +22,7 @@ use super::error::{FsError, Result};
 use super::key::ROOT_INODE;
 use super::mode::make_mode;
 use super::reply::{
-    get_time, Attr, Create, Data, Dir, DirItem, Entry, Lock, Lseek, Open, StatFs, Write, Xattr,
+    get_time, Attr, Create, Data, Dir, Entry, Lock, Lseek, Open, StatFs, Write, Xattr,
 };
 use super::transaction::Txn;
 use crate::MountOption;
@@ -352,27 +352,8 @@ impl AsyncFileSystem for TiFs {
     }
 
     #[tracing::instrument]
-    async fn readdir(&self, ino: u64, _fh: u64, mut offset: i64) -> Result<Dir> {
+    async fn readdir(&self, ino: u64, _fh: u64, offset: i64) -> Result<Dir> {
         let mut dir = Dir::offset(offset as usize);
-
-        if offset == 0 {
-            dir.push(DirItem {
-                ino: ROOT_INODE,
-                name: "..".to_string(),
-                typ: FileType::Directory,
-            });
-        }
-
-        if offset <= 1 {
-            dir.push(DirItem {
-                ino,
-                name: ".".to_string(),
-                typ: FileType::Directory,
-            });
-        }
-
-        offset -= 2.min(offset);
-
         let directory = self.read_dir(ino).await?;
         for item in directory.into_iter().skip(offset as usize) {
             dir.push(item)
@@ -574,7 +555,13 @@ impl AsyncFileSystem for TiFs {
             Box::pin(async move {
                 let ino = txn.lookup(parent, name.clone()).await?;
                 txn.link(ino, newparent, new_name).await?;
-                txn.unlink(parent, name).await
+                txn.unlink(parent, name).await?;
+                let inode = txn.read_inode(ino).await?;
+                if inode.file_attr.kind == FileType::Directory {
+                    txn.unlink(ino, ByteString::from("..")).await?;
+                    txn.link(newparent, ino, ByteString::from("..")).await?;
+                }
+                Ok(())
             })
         })
         .await
