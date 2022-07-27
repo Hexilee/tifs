@@ -101,6 +101,7 @@ impl From<tikv_client::Error> for FsError {
 
         match err {
             KeyError(err) => Self::KeyError(format!("{:?}", err)),
+            MultipleKeyErrors(errs) => Self::KeyError(format!("{:?}", errs)),
             _ => Self::UnknownError(err.to_string()),
         }
     }
