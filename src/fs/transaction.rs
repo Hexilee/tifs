@@ -256,7 +256,13 @@ impl Txn {
     ) -> Result<usize> {
         debug_assert!(inode.size <= self.inline_data_threshold());
         let size = data.len() as u64;
-        debug_assert!(start + size <= self.inline_data_threshold());
+        debug_assert!(
+            start + size <= self.inline_data_threshold(),
+            "{} + {} > {}",
+            start,
+            size,
+            self.inline_data_threshold()
+        );
 
         let size = data.len();
         let start = start as usize;
@@ -395,11 +401,13 @@ impl Txn {
         let size = data.len();
         let target = start + size as u64;
 
-        if inode.inline_data.is_some() && target > self.block_size {
+        if inode.inline_data.is_some() && target > self.inline_data_threshold() {
             self.transfer_inline_data_to_block(&mut inode).await?;
         }
 
-        if (inode.inline_data.is_some() || inode.size == 0) && target <= self.block_size {
+        if (inode.inline_data.is_some() || inode.size == 0)
+            && target <= self.inline_data_threshold()
+        {
             return self.write_inline_data(&mut inode, start, &data).await;
         }
 
