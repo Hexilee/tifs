@@ -593,7 +593,9 @@ impl Txn {
         self.save_dir(inode.ino, &Directory::new()).await?;
         self.link(inode.ino, inode.ino, ByteString::from("."))
             .await?;
-        self.link(parent, inode.ino, ByteString::from("..")).await?;
+        if parent >= ROOT_INODE {
+            self.link(parent, inode.ino, ByteString::from("..")).await?;
+        }
         self.read_inode(inode.ino).await
     }
 
