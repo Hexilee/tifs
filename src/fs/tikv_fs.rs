@@ -27,6 +27,9 @@ use super::reply::{
 use super::transaction::Txn;
 use crate::MountOption;
 
+pub const DIR_SELF: ByteString = ByteString::from_static(".");
+pub const DIR_PARENT: ByteString = ByteString::from_static("..");
+
 pub struct TiFs {
     pub pd_endpoints: Vec<String>,
     pub config: Config,
@@ -558,8 +561,8 @@ impl AsyncFileSystem for TiFs {
                 txn.unlink(parent, name).await?;
                 let inode = txn.read_inode(ino).await?;
                 if inode.file_attr.kind == FileType::Directory {
-                    txn.unlink(ino, ByteString::from("..")).await?;
-                    txn.link(newparent, ino, ByteString::from("..")).await?;
+                    txn.unlink(ino, DIR_PARENT).await?;
+                    txn.link(newparent, ino, DIR_PARENT).await?;
                 }
                 Ok(())
             })

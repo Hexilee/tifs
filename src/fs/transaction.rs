@@ -17,6 +17,7 @@ use super::key::{ScopedKey, ROOT_INODE};
 use super::meta::Meta;
 use super::mode::{as_file_kind, as_file_perm, make_mode};
 use super::reply::{DirItem, StatFs};
+use super::tikv_fs::{DIR_PARENT, DIR_SELF};
 
 pub struct Txn {
     txn: Transaction,
@@ -533,15 +534,15 @@ impl Txn {
                     .read_dir(ino)
                     .await?
                     .iter()
-                    .any(|i| i.name != "." && i.name != "..")
+                    .any(|i| DIR_SELF != i.name && DIR_PARENT != i.name)
                 {
                     let name_str = name.to_string();
                     debug!("dir({}) not empty", &name_str);
                     return Err(FsError::DirNotEmpty { dir: name_str });
                 }
 
-                self.unlink(ino, ByteString::from_static(".")).await?;
-                self.unlink(ino, ByteString::from_static("..")).await?;
+                self.unlink(ino, DIR_SELF).await?;
+                self.unlink(ino, DIR_PARENT).await?;
                 self.unlink(parent, name).await
             }
         }
@@ -591,10 +592,9 @@ impl Txn {
         inode.perm = mode as _;
         self.save_inode(&inode).await?;
         self.save_dir(inode.ino, &Directory::new()).await?;
-        self.link(inode.ino, inode.ino, ByteString::from("."))
-            .await?;
+        self.link(inode.ino, inode.ino, DIR_SELF).await?;
         if parent >= ROOT_INODE {
-            self.link(parent, inode.ino, ByteString::from("..")).await?;
+            self.link(parent, inode.ino, DIR_PARENT).await?;
         }
         self.read_inode(inode.ino).await
     }
