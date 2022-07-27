@@ -27,9 +27,10 @@ jobs:
       - name: Test
         run: |
           cd ~/mnt/tifs
-          stat .
+          until stat . | grep 65536
+          do
+            echo "Try again"
+            sleep 1
+          done
           sudo prove -rv $GITHUB_WORKSPACE/pjdfstest/tests
-
-
-          
 
