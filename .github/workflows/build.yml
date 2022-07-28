@@ -10,22 +10,34 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-
-  build:
+  linux:
+    name: Build on Linux
     runs-on: ubuntu-20.04
-
     steps:
       - uses: actions/checkout@v2
       - name: Install packages
         run: |
           sudo apt update
           sudo apt install -y libfuse-dev libfuse3-dev build-essential
-
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
+          toolchain: nightly-2021-06-01
           components: rustfmt, clippy
-
       - uses: actions/checkout@v2
       - name: Build
         run: cargo build --verbose
+  macOS:
+    name: Build on MacOS
+    runs-on: macos-11
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Install packages
+        run: |
+          brew update > /dev/null && brew install --cask osxfuse
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2021-06-01
+          components: rustfmt, clippy
+      - name: Build
+        run: make build --verbose

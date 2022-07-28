@@ -736,7 +736,7 @@ impl AsyncFileSystem for TiFs {
             Box::pin(async move {
                 let inode = txn.read_inode(ino).await?;
                 warn!("getlk, inode:{:?}, pid:{:?}", inode, pid);
-                Ok(Lock::_new(0, 0, inode.lock_state.lk_type, 0))
+                Ok(Lock::_new(0, 0, inode.lock_state.lk_type as i32, 0))
             })
         })
         .await
