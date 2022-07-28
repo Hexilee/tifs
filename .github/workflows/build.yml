@@ -40,4 +40,4 @@ jobs:
           toolchain: nightly-2021-06-01
           components: rustfmt, clippy
       - name: Build
-        run: make build --verbose
+        run: cargo build --verbose
