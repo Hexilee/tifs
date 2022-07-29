@@ -25,7 +25,7 @@ jobs:
       - name: Test
         run: |
           docker-compose up -d
-          cd ~/mnt/tifs
+          cd ./mnt
           until stat . | grep 65536
           do
             echo "Try again"
