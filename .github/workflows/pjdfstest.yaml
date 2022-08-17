@@ -32,6 +32,8 @@ jobs:
       - name: Mount tifs
         run: |
           mkdir ./mnt
+          ls -lah
+          chmod +x target/release/tifs
           target/release/tifs tifs:127.0.0.1:2379 ./mnt
           until stat ./mnt | grep 65536
           do
