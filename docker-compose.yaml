@@ -22,18 +22,3 @@ services:
       - --data-dir=/data
       - --pd=127.0.0.1:2379
     network_mode: "host"
-
-  # tifs:
-  #   image: hexilee/tifs:ci
-  #   depends_on:
-  #     - pd
-  #     - tikv
-  #   devices:
-  #     - "/dev/fuse:/dev/fuse"
-  #   volumes:
-  #     - ./mnt:/mnt/tifs:shared
-  #   privileged: true
-  #   entrypoint: /bin/bash
-  #   command:
-  #     - -c
-  #     - 'sleep 10; /tifs -f tifs:pd:2379 /mnt/tifs'
