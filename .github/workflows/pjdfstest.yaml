@@ -6,15 +6,21 @@ jobs:
   test:
     runs-on: ubuntu-20.04
     steps:
-      - name: Check out the repo
-        uses: actions/checkout@v2
-      - name: Build Docker Image
-        uses: docker/build-push-action@v1
-        env:
-          DOCKER_BUILDKIT: 1
+      - uses: actions/checkout@v2
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse-dev fuse3 libfuse3-dev build-essential
+      - uses: actions-rs/toolchain@v1
         with:
-          push: false
-          tags: ci
+          toolchain: nightly-2021-06-01
+          components: rustfmt, clippy
+      - uses: actions/checkout@v2
+      - name: Build
+        run: make release
+      - name: Start TiKV
+        run: |
+          docker-compose up -d tikv
       - name: Build pjdfstest
         run: |
           git clone https://github.com/pjd/pjdfstest.git
@@ -22,14 +28,18 @@ jobs:
           autoreconf -ifs
           ./configure
           make pjdfstest
-      - name: Test
+      - uses: actions/checkout@v2
+      - name: Mount tifs
         run: |
-          docker-compose up -d
-          cd ./mnt
-          until stat . | grep 65536
+          mkdir ./mnt
+          target/release/tifs tifs:127.0.0.1:2379 ./mnt
+          until stat ./mnt | grep 65536
           do
             echo "Try again"
             sleep 1
           done
+      - name: Test
+        run: |
+          cd ./mnt
           sudo prove -rv $GITHUB_WORKSPACE/pjdfstest/tests
 
