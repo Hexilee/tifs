@@ -31,11 +31,6 @@ jobs:
           make release
           mkdir ./mnt
           target/release/tifs tifs:127.0.0.1:2379 ./mnt
-          until stat ./mnt | grep 65536
-          do
-            echo "Try again"
-            sleep 1
-          done
       - name: Test
         run: |
           cd ./mnt
