@@ -18,13 +18,6 @@ jobs:
       - name: Start TiKV
         run: |
           docker-compose up -d tikv
-      - name: Build pjdfstest
-        run: |
-          git clone https://github.com/pjd/pjdfstest.git
-          cd pjdfstest
-          autoreconf -ifs
-          ./configure
-          make pjdfstest
       - uses: actions/checkout@v2
       - name: Mount tifs
         run: |
@@ -32,7 +25,12 @@ jobs:
           mkdir ./mnt
           target/release/tifs tifs:127.0.0.1:2379 ./mnt
       - name: Test
+        uses: actions/checkout@v2
         run: |
-          cd ./mnt
+          git clone https://github.com/pjd/pjdfstest.git
+          cd pjdfstest
+          autoreconf -ifs
+          ./configure
+          make pjdfstest
+          cd ../mnt
           sudo prove -rv $GITHUB_WORKSPACE/pjdfstest/tests
-
