@@ -289,15 +289,14 @@ impl AsyncFileSystem for TiFs {
     #[tracing::instrument]
     async fn lookup(&self, parent: u64, name: ByteString) -> Result<Entry> {
         Self::check_file_name(&name)?;
-        // self.spin_no_delay(move |_, txn| {
-        //     let name = name.clone();
-        //     Box::pin(async move {
-        //         let ino = txn.lookup(parent, name).await?;
-        //         Ok(Entry::new(txn.read_inode(ino).await?.into(), 0))
-        //     })
-        // })
-        // .await
-        Err(super::error::FsError::Unimplemented)
+        self.spin_no_delay(move |_, txn| {
+            let name = name.clone();
+            Box::pin(async move {
+                let ino = txn.lookup(parent, name).await?;
+                Ok(Entry::new(txn.read_inode(ino).await?.into(), 0))
+            })
+        })
+        .await
     }
 
     #[tracing::instrument]
