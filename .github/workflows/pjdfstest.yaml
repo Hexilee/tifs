@@ -24,8 +24,8 @@ jobs:
           make release
           mkdir ./mnt
           target/release/tifs tifs:127.0.0.1:2379 ./mnt
+      - uses: actions/checkout@v2
       - name: Test
-        uses: actions/checkout@v2
         run: |
           git clone https://github.com/pjd/pjdfstest.git
           cd pjdfstest
