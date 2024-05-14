@@ -4,7 +4,7 @@ use std::time::SystemTime;
 use bytes::Bytes;
 use bytestring::ByteString;
 use fuser::{FileAttr, FileType};
-use tikv_client::{Transaction, TransactionClient, TransactionOptions};
+use tikv_client::{Backoff, RetryOptions, Transaction, TransactionClient, TransactionOptions};
 use tracing::{debug, instrument, trace};
 
 use super::block::empty_block;
@@ -18,6 +18,11 @@ use super::meta::Meta;
 use super::mode::{as_file_kind, as_file_perm, make_mode};
 use super::reply::{DirItem, StatFs};
 use super::tikv_fs::{DIR_PARENT, DIR_SELF};
+
+// default from tikv-rust-client: no_jitter_backoff(base_delay_ms: 2, max_delay_ms: 500, max_attempts: 10)
+pub const DEFAULT_REGION_BACKOFF: Backoff = Backoff::no_jitter_backoff(300, 1000, 100);
+// default from tikv-rust-client: no_jitter_backoff(base_delay_ms: 2, max_delay_ms: 500, max_attempts: 10)
+pub const OPTIMISTIC_BACKOFF: Backoff = Backoff::no_jitter_backoff(2, 500, 1000);
 
 pub struct Txn {
     txn: Transaction,
@@ -52,10 +57,16 @@ impl Txn {
         max_size: Option<u64>,
         max_name_len: u32,
     ) -> Result<Self> {
+        let options = TransactionOptions::new_optimistic().use_async_commit();
+        let options = options.retry_options(RetryOptions {
+            region_backoff: DEFAULT_REGION_BACKOFF,
+            lock_backoff: OPTIMISTIC_BACKOFF,
+        });
+        let txn: Transaction = client
+            .begin_with_options(options)
+            .await?;
         Ok(Txn {
-            txn: client
-                .begin_with_options(TransactionOptions::new_optimistic().use_async_commit())
-                .await?,
+            txn,
             block_size,
             max_blocks: max_size.map(|size| size / block_size),
             max_name_len,
