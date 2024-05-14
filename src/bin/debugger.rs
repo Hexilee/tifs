@@ -59,7 +59,7 @@ impl Console {
         S: Clone + Debug + Into<String>,
     {
         let client =
-            TransactionClient::new_with_config(pd_endpoints.clone(), Default::default(), None)
+            TransactionClient::new_with_config(pd_endpoints.clone(), Default::default())
                 .await
                 .map_err(|err| anyhow!("{}", err))?;
         Ok(Self {
