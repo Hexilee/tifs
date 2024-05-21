@@ -55,7 +55,7 @@ impl TiFs {
     where
         S: Clone + Debug + Into<String>,
     {
-        let client = TransactionClient::new_with_config(pd_endpoints.clone(), cfg.clone(), None)
+        let client = TransactionClient::new_with_config(pd_endpoints.clone(), cfg.clone())
             .await
             .map_err(|err| anyhow!("{}", err))?;
         info!("connected to pd endpoints: {:?}", pd_endpoints);

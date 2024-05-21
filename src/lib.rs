@@ -1,4 +1,3 @@
-#![feature(async_closure)]
 #![feature(array_chunks)]
 
 pub mod fs;
